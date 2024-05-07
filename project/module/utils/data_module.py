@@ -93,11 +93,14 @@ class fMRIDataModule(pl.LightningDataModule):
             subject_list = os.listdir(img_root)
             meta_data = pd.read_csv(os.path.join(self.hparams.image_path, "metadata", "HCP_1200_gender.csv"))
             meta_data_residual = pd.read_csv(os.path.join(self.hparams.image_path, "metadata", "HCP_1200_precise_age.csv"))
-            meta_data_all = pd.read_csv(os.path.join(self.hparams.image_path, "metadata", "HCP_1200_all.csv"))
+            # meta_data_all = pd.read_csv(os.path.join(self.hparams.image_path, "metadata", "HCP_1200_all.csv"))
             if self.hparams.downstream_task == 'sex': task_name = 'Gender'
             elif self.hparams.downstream_task == 'age': task_name = 'age'
-            elif self.hparams.downstream_task == 'int_total': task_name = 'CogTotalComp_AgeAdj'
+            # CogTotalComp_AgeAdj CogTotalComp_Unadj Strength_AgeAdj Strength_Unadj ReadEng_AgeAdj ReadEng_Unadj 
+            elif self.hparams.downstream_task == 'int_total': task_name = 'Strength_Unadj'
             else: raise NotImplementedError()
+
+            print('task_name = {}'.format(task_name))
 
             if self.hparams.downstream_task == 'sex':
                 meta_task = meta_data[['Subject',task_name]].dropna()

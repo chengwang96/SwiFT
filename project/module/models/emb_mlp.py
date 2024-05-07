@@ -9,7 +9,7 @@ import torch.nn as nn
 
 class mlp(nn.Module):
 
-    def __init__(self, final_embedding_size=128, num_tokens = 196, use_normalization=True, n_local_frames=4):
+    def __init__(self, final_embedding_size=128, num_tokens=196, use_normalization=True, n_local_frames=4):
 
         super(mlp, self).__init__()
 

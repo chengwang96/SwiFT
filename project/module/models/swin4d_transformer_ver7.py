@@ -17,6 +17,7 @@ from monai.networks.blocks import MLPBlock as Mlp
 
 from monai.networks.layers import DropPath, trunc_normal_
 from monai.utils import ensure_tuple_rep, look_up_option, optional_import
+from mamba_ssm import Mamba
 
 from .patchembedding import PatchEmbed
 
@@ -256,6 +257,13 @@ class SwinTransformerBlock4D(nn.Module):
             attn_drop=attn_drop,
             proj_drop=drop,
         )
+        
+        self.mamba = Mamba(
+                d_model=dim, # Model dimension d_model
+                d_state=16,  # SSM state expansion factor
+                d_conv=4,    # Local convolution width
+                expand=2,    # Block expansion factor
+        )
 
         self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
         self.norm2 = norm_layer(dim)
@@ -283,7 +291,8 @@ class SwinTransformerBlock4D(nn.Module):
             shifted_x = x
             attn_mask = None
         x_windows = window_partition(shifted_x, window_size)
-        attn_windows = self.attn(x_windows, mask=attn_mask)
+        attn_windows = self.mamba(x_windows)
+        # attn_windows = self.attn(x_windows, mask=attn_mask)
         attn_windows = attn_windows.view(-1, *(window_size + (c,)))
         shifted_x = window_reverse(attn_windows, window_size, dims)
         if any(i > 0 for i in shift_size):
@@ -810,12 +819,19 @@ class SwinTransformer4D(nn.Module):
         if self.to_float:
             # converting tensor to float
             x = x.float()
+        
+        # torch.Size([16, 1, 96, 96, 96, 20])
         x = self.patch_embed(x)
-        x = self.pos_drop(x)  # (b, c, h, w, d, t)
+        # torch.Size([16, 36, 16, 16, 16, 20])
+        x = self.pos_drop(x)
 
         for i in range(self.num_layers):
             x = self.pos_embeds[i](x)
             x = self.layers[i](x.contiguous())
+            # torch.Size([16, 72, 8, 8, 8, 20])
+            # torch.Size([16, 144, 4, 4, 4, 20])
+            # torch.Size([16, 288, 2, 2, 2, 20])
+            # torch.Size([16, 288, 2, 2, 2, 20])
 
         # moved this part to clf_mlp or reg_mlp
 
