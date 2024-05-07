@@ -97,7 +97,7 @@ class fMRIDataModule(pl.LightningDataModule):
             if self.hparams.downstream_task == 'sex': task_name = 'Gender'
             elif self.hparams.downstream_task == 'age': task_name = 'age'
             # CogTotalComp_AgeAdj CogTotalComp_Unadj Strength_AgeAdj Strength_Unadj ReadEng_AgeAdj ReadEng_Unadj 
-            elif self.hparams.downstream_task == 'int_total': task_name = 'Strength_Unadj'
+            elif self.hparams.downstream_task == 'int_total': task_name = 'ReadEng_AgeAdj'
             else: raise NotImplementedError()
 
             print('task_name = {}'.format(task_name))

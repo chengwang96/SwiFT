@@ -258,12 +258,12 @@ class SwinTransformerBlock4D(nn.Module):
             proj_drop=drop,
         )
         
-        self.mamba = Mamba(
-                d_model=dim, # Model dimension d_model
-                d_state=16,  # SSM state expansion factor
-                d_conv=4,    # Local convolution width
-                expand=2,    # Block expansion factor
-        )
+        # self.mamba = Mamba(
+        #         d_model=dim, # Model dimension d_model
+        #         d_state=16,  # SSM state expansion factor
+        #         d_conv=4,    # Local convolution width
+        #         expand=2,    # Block expansion factor
+        # )
 
         self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
         self.norm2 = norm_layer(dim)
@@ -291,8 +291,8 @@ class SwinTransformerBlock4D(nn.Module):
             shifted_x = x
             attn_mask = None
         x_windows = window_partition(shifted_x, window_size)
-        attn_windows = self.mamba(x_windows)
-        # attn_windows = self.attn(x_windows, mask=attn_mask)
+        # attn_windows = self.mamba(x_windows)
+        attn_windows = self.attn(x_windows, mask=attn_mask)
         attn_windows = attn_windows.view(-1, *(window_size + (c,)))
         shifted_x = window_reverse(attn_windows, window_size, dims)
         if any(i > 0 for i in shift_size):

@@ -1,9 +1,9 @@
 TRAINER_ARGS='--accelerator gpu --max_epochs 10 --precision 16 --num_nodes 1 --devices 4 --strategy DDP' # specify the number of gpus as '--devices'
 MAIN_ARGS='--loggername tensorboard --classifier_module v6 --dataset_name S1200 --image_path ./data/HCP1200_MNI_to_TRs_minmax'
-DATA_ARGS='--batch_size 8 --num_workers 8 --input_type rest'
+DATA_ARGS='--batch_size 8 --num_workers 8 --input_type rest --project_name swift_re_a_ft'
 # DEFAULT_ARGS='--project_name {neptune project name}'
-OPTIONAL_ARGS='--c_multiplier 2 --last_layer_full_MSA True --clf_head_version v1 --downstream_task int_total' #--use_scheduler --gamma 0.5 --cycle 0.5' 
-RESUME_ARGS=''
+OPTIONAL_ARGS='--c_multiplier 2 --last_layer_full_MSA True --clf_head_version v1 --downstream_task int_total' #--use_scheduler --gamma 0.5 --cycle 0.5'
+RESUME_ARGS='--load_model_path ./pretrained_models/contrastive_pretrained.ckpt'
 
 # export NEPTUNE_API_TOKEN="{neptune API token}"
 
