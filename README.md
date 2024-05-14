@@ -252,7 +252,7 @@ Default classifier:
 
 DataModule arguments:
   --dataset_split_num DATASET_SPLIT_NUM
-  --label_scaling_method {minmax,standardization}
+  --label_scaling_method {minmax, standardization}
                         label normalization strategy for a regression task
                         (mean and std are automatically calculated using train
                         set) (default: standardization)

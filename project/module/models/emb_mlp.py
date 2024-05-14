@@ -22,7 +22,7 @@ class mlp(nn.Module):
 
     def forward(self, x, type):
         # x -> b, 96, 4, 4, 4, t
-        
+
         x = x.flatten(start_dim=2).transpose(1, 2)  # B L C
 
         if type == 'l':

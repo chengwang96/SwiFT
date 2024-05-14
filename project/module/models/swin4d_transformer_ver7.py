@@ -249,21 +249,21 @@ class SwinTransformerBlock4D(nn.Module):
         self.use_checkpoint = use_checkpoint
 
         self.norm1 = norm_layer(dim)
-        self.attn = WindowAttention4D(
-            dim,
-            window_size=window_size,
-            num_heads=num_heads,
-            qkv_bias=qkv_bias,
-            attn_drop=attn_drop,
-            proj_drop=drop,
-        )
-        
-        # self.mamba = Mamba(
-        #         d_model=dim, # Model dimension d_model
-        #         d_state=16,  # SSM state expansion factor
-        #         d_conv=4,    # Local convolution width
-        #         expand=2,    # Block expansion factor
+        # self.attn = WindowAttention4D(
+        #     dim,
+        #     window_size=window_size,
+        #     num_heads=num_heads,
+        #     qkv_bias=qkv_bias,
+        #     attn_drop=attn_drop,
+        #     proj_drop=drop,
         # )
+        
+        self.mamba = Mamba(
+                d_model=dim, # Model dimension d_model
+                d_state=16,  # SSM state expansion factor
+                d_conv=4,    # Local convolution width
+                expand=2,    # Block expansion factor
+        )
 
         self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
         self.norm2 = norm_layer(dim)
@@ -291,8 +291,8 @@ class SwinTransformerBlock4D(nn.Module):
             shifted_x = x
             attn_mask = None
         x_windows = window_partition(shifted_x, window_size)
-        # attn_windows = self.mamba(x_windows)
-        attn_windows = self.attn(x_windows, mask=attn_mask)
+        attn_windows = self.mamba(x_windows)
+        # attn_windows = self.attn(x_windows, mask=attn_mask)
         attn_windows = attn_windows.view(-1, *(window_size + (c,)))
         shifted_x = window_reverse(attn_windows, window_size, dims)
         if any(i > 0 for i in shift_size):
@@ -819,7 +819,7 @@ class SwinTransformer4D(nn.Module):
         if self.to_float:
             # converting tensor to float
             x = x.float()
-        
+
         # torch.Size([16, 1, 96, 96, 96, 20])
         x = self.patch_embed(x)
         # torch.Size([16, 36, 16, 16, 16, 20])

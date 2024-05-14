@@ -117,12 +117,14 @@ class S1200(BaseDataset):
 
             background_value = y.flatten()[0]
             y = y.permute(0,4,1,2,3)
-            y = torch.nn.functional.pad(y, (8, 7, 2, 1, 11, 10), value=background_value) # adjust this padding level according to your data
+            # y = torch.nn.functional.pad(y, (8, 7, 2, 1, 11, 10), value=background_value) # adjust this padding level according to your data
+            y = torch.nn.functional.pad(y, (3, 2, 4, 4, 3, 2), value=background_value)
             y = y.permute(0,2,3,4,1)
 
             background_value = rand_y.flatten()[0]
             rand_y = rand_y.permute(0,4,1,2,3)
-            rand_y = torch.nn.functional.pad(rand_y, (8, 7, 2, 1, 11, 10), value=background_value) # adjust this padding level according to your data
+            # rand_y = torch.nn.functional.pad(rand_y, (8, 7, 2, 1, 11, 10), value=background_value) # adjust this padding level according to your data
+            rand_y = torch.nn.functional.pad(rand_y, (3, 2, 4, 4, 3, 2), value=background_value)
             rand_y = rand_y.permute(0,2,3,4,1)
 
             return {
