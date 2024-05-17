@@ -56,6 +56,8 @@ class LitClassifier(pl.LightningModule):
                 self.output_head = load_model("reg_mlp", self.hparams)
         elif self.hparams.use_contrastive:
             self.output_head = load_model("emb_mlp", self.hparams)
+        elif self.hparams.use_mae:
+            self.output_head = None
         else:
             raise NotImplementedError("output head should be defined")
 
@@ -185,7 +187,20 @@ class LitClassifier(pl.LightningModule):
 
                 result_dict = {
                     f"{mode}_loss": loss,
-                }        
+                }
+            elif self.hparams.use_mae:
+                # B, C, H, W, D, T = image shape
+                y, diff_y = fmri
+
+                batch_size = y.shape[0]
+                if (len(subj) != len(tuple(subj))) and mode == 'train':
+                    print('Some sub-sequences in a batch came from the same subject!')
+                
+                pred, loss = self.model(self.augment(y))
+
+                result_dict = {
+                    f"{mode}_loss": loss,
+                }
         else:
             subj, logits, target = self._compute_logits(batch, augment_during_training = self.hparams.augment_during_training)
 
@@ -205,7 +220,9 @@ class LitClassifier(pl.LightningModule):
                     f"{mode}_mse": loss,
                     f"{mode}_l1_loss": l1
                 }
+        
         self.log_dict(result_dict, prog_bar=True, sync_dist=False, add_dataloader_idx=False, on_step=True, on_epoch=True, batch_size=self.hparams.batch_size) # batch_size = batch_size
+        
         return loss
 
     def _evaluate_metrics(self, subj_array, total_out, mode):
@@ -346,7 +363,7 @@ class LitClassifier(pl.LightningModule):
                 self.subject_accuracy[subj]['score'].append(score)
                 self.subject_accuracy[subj]['count']+=1
         
-        if self.hparams.strategy == None : 
+        if self.hparams.strategy == None: 
             pass
         elif 'ddp' in self.hparams.strategy and len(self.subject_accuracy) > 0:
             world_size = torch.distributed.get_world_size()
@@ -493,6 +510,10 @@ class LitClassifier(pl.LightningModule):
         # pretraining-related
         group.add_argument("--use_contrastive", action='store_true', help="whether to use contrastive learning (specify --contrastive_type argument as well)")
         group.add_argument("--contrastive_type", default=0, type=int, help="combination of contrastive losses to use [1: Use the Instance contrastive loss function, 2: Use the local-local temporal contrastive loss function, 3: Use the sum of both loss functions]")
+        group.add_argument("--use_mae", action='store_true', help="whether to use mae")
+        group.add_argument("--spatial_mask", type=str, default="random", help="spatial mae strategy")
+        group.add_argument("--time_mask", type=str, default="random", help="time mae strategy")
+        group.add_argument("--mask_ratio", type=float, default=0.1, help="mae masking ratio")
         group.add_argument("--pretraining", action='store_true', help="whether to use pretraining")
         group.add_argument("--augment_during_training", action='store_true', help="whether to augment input images during training")
         group.add_argument("--augment_only_affine", action='store_true', help="whether to only apply affine augmentation")

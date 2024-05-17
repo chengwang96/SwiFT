@@ -1,4 +1,5 @@
 from .swin4d_transformer_ver7 import SwinTransformer4D as SwinTransformer4D_ver7
+from .swin4d_transformer_ver7 import SwinTransformer4DMAE
 
 def load_model(model_name, hparams=None):
     #number of transformer stages
@@ -23,10 +24,30 @@ def load_model(model_name, hparams=None):
             num_heads=hparams.num_heads,
             c_multiplier=hparams.c_multiplier,
             last_layer_full_MSA=hparams.last_layer_full_MSA,
-            to_float = to_float,
+            to_float=to_float,
             drop_rate=hparams.attn_drop_rate,
             drop_path_rate=hparams.attn_drop_rate,
             attn_drop_rate=hparams.attn_drop_rate
+        )
+    elif model_name == "swin4d_mae":
+        net = SwinTransformer4DMAE(
+            img_size=hparams.img_size,
+            in_chans=hparams.in_chans,
+            embed_dim=hparams.embed_dim,
+            window_size=hparams.window_size,
+            first_window_size=hparams.first_window_size,
+            patch_size=hparams.patch_size,
+            depths=hparams.depths,
+            num_heads=hparams.num_heads,
+            c_multiplier=hparams.c_multiplier,
+            last_layer_full_MSA=hparams.last_layer_full_MSA,
+            to_float=to_float,
+            drop_rate=hparams.attn_drop_rate,
+            drop_path_rate=hparams.attn_drop_rate,
+            attn_drop_rate=hparams.attn_drop_rate,
+            mask_ratio=hparams.mask_ratio,
+            spatial_mask=hparams.spatial_mask,
+            time_mask=hparams.time_mask
         )
     elif model_name == "emb_mlp":
         from .emb_mlp import mlp

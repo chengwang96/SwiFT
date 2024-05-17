@@ -12,6 +12,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.checkpoint as checkpoint
 from torch.nn import LayerNorm
+import random
 
 from monai.networks.blocks import MLPBlock as Mlp
 
@@ -71,6 +72,30 @@ def window_partition(x, window_size):
         x.permute(0, 1, 3, 5, 7, 2, 4, 6, 8, 9)
         .contiguous()
         .view(-1, window_size[0] * window_size[1] * window_size[2] * window_size[3], c)
+    )
+    return windows
+
+
+def window_partition_with_b(x, window_size):
+    x_shape = x.size()
+
+    b, d, h, w, t, c = x_shape
+    x = x.view(
+        b,
+        d // window_size[0],  # number of windows in depth dimension
+        window_size[0],  # window size in depth dimension
+        h // window_size[1],  # number of windows in height dimension
+        window_size[1],  # window size in height dimension
+        w // window_size[2],  # number of windows in width dimension
+        window_size[2],  # window size in width dimension
+        t // window_size[3],  # number of windows in time dimension
+        window_size[3],  # window size in time dimension
+        c,
+    )
+    windows = (
+        x.permute(0, 1, 3, 5, 7, 2, 4, 6, 8, 9)
+        .contiguous()
+        .view(b, -1, window_size[0] * window_size[1] * window_size[2] * window_size[3], c)
     )
     return windows
 
@@ -249,21 +274,21 @@ class SwinTransformerBlock4D(nn.Module):
         self.use_checkpoint = use_checkpoint
 
         self.norm1 = norm_layer(dim)
-        # self.attn = WindowAttention4D(
-        #     dim,
-        #     window_size=window_size,
-        #     num_heads=num_heads,
-        #     qkv_bias=qkv_bias,
-        #     attn_drop=attn_drop,
-        #     proj_drop=drop,
-        # )
-        
-        self.mamba = Mamba(
-                d_model=dim, # Model dimension d_model
-                d_state=16,  # SSM state expansion factor
-                d_conv=4,    # Local convolution width
-                expand=2,    # Block expansion factor
+        self.attn = WindowAttention4D(
+            dim,
+            window_size=window_size,
+            num_heads=num_heads,
+            qkv_bias=qkv_bias,
+            attn_drop=attn_drop,
+            proj_drop=drop,
         )
+        
+        # self.mamba = Mamba(
+        #         d_model=dim, # Model dimension d_model
+        #         d_state=16,  # SSM state expansion factor
+        #         d_conv=4,    # Local convolution width
+        #         expand=2,    # Block expansion factor
+        # )
 
         self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
         self.norm2 = norm_layer(dim)
@@ -291,8 +316,8 @@ class SwinTransformerBlock4D(nn.Module):
             shifted_x = x
             attn_mask = None
         x_windows = window_partition(shifted_x, window_size)
-        attn_windows = self.mamba(x_windows)
-        # attn_windows = self.attn(x_windows, mask=attn_mask)
+        # attn_windows = self.mamba(x_windows)
+        attn_windows = self.attn(x_windows, mask=attn_mask)
         attn_windows = attn_windows.view(-1, *(window_size + (c,)))
         shifted_x = window_reverse(attn_windows, window_size, dims)
         if any(i > 0 for i in shift_size):
@@ -354,13 +379,28 @@ class PatchMergingV2(nn.Module):
     def forward(self, x):
         x_shape = x.size()
         b, d, h, w, t, c = x_shape
-        x = torch.cat(
-            [x[:, i::2, j::2, k::2, :, :] for i, j, k in itertools.product(range(2), range(2), range(2))],
-            -1,
-        )
+        x = torch.cat([x[:, i::2, j::2, k::2, :, :] for i, j, k in itertools.product(range(2), range(2), range(2))], -1)
 
         x = self.norm(x)
         x = self.reduction(x)
+
+        return x
+
+
+class PatchExpanding(nn.Module):
+    def __init__(
+        self, dim: int, norm_layer: Type[LayerNorm] = nn.LayerNorm, spatial_dims: int = 3, c_multiplier: int = 2
+    ) -> None:
+        super().__init__()
+        self.dim = dim
+
+        self.expand = nn.Linear(dim, c_multiplier * c_multiplier * dim, bias=False)
+        self.norm = norm_layer(dim // c_multiplier)
+
+    def forward(self, x):
+        x = self.expand(x)
+        x = rearrange(x, 'B D H W T (P1 P2 P3 C) -> B (D P1) (H P2) (W P3) T C', P1=2, P2=2, P3=2)
+        x = self.norm(x)
 
         return x
 
@@ -484,6 +524,72 @@ class BasicLayer(nn.Module):
         x = x.view(b, d, h, w, t, -1)
         if self.downsample is not None:
             x = self.downsample(x)
+        x = rearrange(x, "b d h w t c -> b c d h w t")
+
+        return x
+    
+
+class BasicLayerUp(nn.Module):
+    def __init__(
+        self,
+        dim: int,
+        depth: int,
+        num_heads: int,
+        window_size: Sequence[int],
+        drop_path: list,
+        mlp_ratio: float = 4.0,
+        qkv_bias: bool = False,
+        drop: float = 0.0,
+        attn_drop: float = 0.0,
+        norm_layer: Type[LayerNorm] = nn.LayerNorm,
+        c_multiplier: int = 2,
+        upsample: Optional[nn.Module] = None,
+        use_checkpoint: bool = False,
+    ) -> None:
+        super().__init__()
+        self.window_size = window_size
+        self.shift_size = tuple(i // 2 for i in window_size)
+        self.no_shift = tuple(0 for i in window_size)
+        self.depth = depth
+        self.use_checkpoint = use_checkpoint
+        self.blocks = nn.ModuleList(
+            [
+                SwinTransformerBlock4D(
+                    dim=dim,
+                    num_heads=num_heads,
+                    window_size=window_size,
+                    shift_size=self.no_shift if (i % 2 == 0) else self.shift_size,
+                    mlp_ratio=mlp_ratio,
+                    qkv_bias=qkv_bias,
+                    drop=drop,
+                    attn_drop=attn_drop,
+                    drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
+                    norm_layer=norm_layer,
+                    use_checkpoint=use_checkpoint,
+                )
+                for i in range(depth)
+            ]
+        )
+        self.upsample = upsample
+        if callable(self.upsample):
+            self.upsample = upsample(
+                dim=dim, norm_layer=norm_layer, spatial_dims=len(self.window_size), c_multiplier=c_multiplier
+            )
+
+    def forward(self, x):
+        b, c, d, h, w, t = x.size()
+        window_size, shift_size = get_window_size((d, h, w, t), self.window_size, self.shift_size)
+        x = rearrange(x, "b c d h w t -> b d h w t c")
+        dp = int(np.ceil(d / window_size[0])) * window_size[0]
+        hp = int(np.ceil(h / window_size[1])) * window_size[1]
+        wp = int(np.ceil(w / window_size[2])) * window_size[2]
+        tp = int(np.ceil(t / window_size[3])) * window_size[3]
+        attn_mask = compute_mask([dp, hp, wp, tp], window_size, shift_size, x.device)
+        for blk in self.blocks:
+            x = blk(x, attn_mask)
+        x = x.view(b, d, h, w, t, -1)
+        if self.upsample is not None:
+            x = self.upsample(x)
         x = rearrange(x, "b d h w t c -> b c d h w t")
 
         return x
@@ -800,27 +906,13 @@ class SwinTransformer4D(nn.Module):
             )
             self.layers.append(layer)
 
-            #############################################################
-
-        self.num_features = int(embed_dim * c_multiplier ** (self.num_layers - 1))
-
-        self.norm = norm_layer(self.num_features)
-        self.avgpool = nn.AdaptiveAvgPool1d(1)  #
-        self.head = nn.Linear(self.num_features, 1) if num_classes == 2 else num_classes
-
-
     def forward(self, x):
-
-        #print model parameters
-        # for name, param in self.named_parameters():
-        #     if param.requires_grad:
-        #         print(name, param.data.shape)
-
         if self.to_float:
             # converting tensor to float
             x = x.float()
 
         # torch.Size([16, 1, 96, 96, 96, 20])
+        
         x = self.patch_embed(x)
         # torch.Size([16, 36, 16, 16, 16, 20])
         x = self.pos_drop(x)
@@ -833,12 +925,311 @@ class SwinTransformer4D(nn.Module):
             # torch.Size([16, 288, 2, 2, 2, 20])
             # torch.Size([16, 288, 2, 2, 2, 20])
 
-        # moved this part to clf_mlp or reg_mlp
+        return x
 
-        # x = x.flatten(start_dim=2).transpose(1, 2)  # B L C
-        # x = self.norm(x)  # B L C
-        # x = self.avgpool(x.transpose(1, 2))  # B C 1
-        # x = torch.flatten(x, 1)
-        # x = self.head(x)
+
+class SwinTransformer4DMAE(nn.Module):
+    def __init__(
+        self,
+        img_size: Tuple,
+        in_chans: int,
+        embed_dim: int,
+        window_size: Sequence[int],
+        first_window_size: Sequence[int],
+        patch_size: Sequence[int],
+        depths: Sequence[int],
+        num_heads: Sequence[int],
+        mlp_ratio: float = 4.0,
+        qkv_bias: bool = True,
+        drop_rate: float = 0.0,
+        attn_drop_rate: float = 0.0,
+        drop_path_rate: float = 0.0,
+        norm_layer: Type[LayerNorm] = nn.LayerNorm,
+        patch_norm: bool = False,
+        use_checkpoint: bool = False,
+        spatial_dims: int = 4,
+        c_multiplier: int = 2,
+        last_layer_full_MSA: bool = False,
+        downsample="mergingv2",
+        to_float: bool = False,
+        mask_ratio: float = 0.0,
+        spatial_mask="random",
+        time_mask="random",
+        **kwargs,
+    ) -> None:
+        super().__init__()
+        img_size = ensure_tuple_rep(img_size, spatial_dims)
+        self.mask_ratio = mask_ratio
+        self.spatial_mask = spatial_mask
+        self.time_mask = time_mask
+        self.num_layers = len(depths)
+        self.embed_dim = embed_dim
+        self.patch_norm = patch_norm
+        self.window_size = window_size
+        self.first_window_size = first_window_size
+        self.patch_size = patch_size
+        self.to_float = to_float
+        self.in_chans = in_chans
+        self.patch_embed = PatchEmbed(
+            img_size=img_size,
+            patch_size=self.patch_size,
+            in_chans=in_chans,
+            embed_dim=embed_dim,
+            norm_layer=norm_layer if self.patch_norm else None,  # type: ignore
+            flatten=False,
+            spatial_dims=spatial_dims,
+        )
+        window_volume = window_size[0] * window_size[1] * window_size[2] * window_size[3]
+        self.mask_token = nn.Parameter(torch.zeros([window_volume, embed_dim], dtype=torch.float32))
+        grid_size = self.patch_embed.grid_size
+        self.grid_size = grid_size
+        self.pos_drop = nn.Dropout(p=drop_rate)
+        dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]
+
+        #patch_num = int((img_size[0]/patch_size[0]) * (img_size[1]/patch_size[1]) * (img_size[2]/patch_size[2]))
+        #time_num = int(img_size[3]/patch_size[3])
+        patch_dim = ((img_size[0]//patch_size[0]), (img_size[1]//patch_size[1]), (img_size[2]//patch_size[2]), (img_size[3]//patch_size[3]))
+
+        #print img, patch size, patch dim
+        print("img_size: ", img_size)
+        print("patch_size: ", patch_size)
+        print("patch_dim: ", patch_dim)
+        self.pos_embeds = nn.ModuleList()
+        pos_embed_dim = embed_dim
+        for i in range(self.num_layers):
+            self.pos_embeds.append(PositionalEmbedding(pos_embed_dim, patch_dim))
+            pos_embed_dim = pos_embed_dim * c_multiplier
+            patch_dim = (patch_dim[0]//2, patch_dim[1]//2, patch_dim[2]//2, patch_dim[3])
+
+        # build layer
+        self.layers = nn.ModuleList()
+        down_sample_mod = look_up_option(downsample, MERGING_MODE) if isinstance(downsample, str) else downsample
+    
+        layer = BasicLayer(
+            dim=int(embed_dim),
+            depth=depths[0],
+            num_heads=num_heads[0],
+            window_size=self.first_window_size,
+            drop_path=dpr[sum(depths[:0]) : sum(depths[: 0 + 1])],
+            mlp_ratio=mlp_ratio,
+            qkv_bias=qkv_bias,
+            drop=drop_rate,
+            attn_drop=attn_drop_rate,
+            norm_layer=norm_layer,
+            c_multiplier=c_multiplier,
+            downsample=down_sample_mod if 0 < self.num_layers - 1 else None,
+            use_checkpoint=use_checkpoint,
+        )
+        self.layers.append(layer)
+
+        # exclude last layer
+        for i_layer in range(1, self.num_layers - 1):
+            layer = BasicLayer(
+                dim=int(embed_dim * (c_multiplier**i_layer)),
+                depth=depths[i_layer],
+                num_heads=num_heads[i_layer],
+                window_size=self.window_size,
+                drop_path=dpr[sum(depths[:i_layer]) : sum(depths[: i_layer + 1])],
+                mlp_ratio=mlp_ratio,
+                qkv_bias=qkv_bias,
+                drop=drop_rate,
+                attn_drop=attn_drop_rate,
+                norm_layer=norm_layer,
+                c_multiplier=c_multiplier,
+                downsample=down_sample_mod if i_layer < self.num_layers - 1 else None,
+                use_checkpoint=use_checkpoint,
+            )
+            self.layers.append(layer)
+
+        if not last_layer_full_MSA:
+            layer = BasicLayer(
+                dim=int(embed_dim * c_multiplier ** (self.num_layers - 1)),
+                depth=depths[(self.num_layers - 1)],
+                num_heads=num_heads[(self.num_layers - 1)],
+                window_size=self.window_size,
+                drop_path=dpr[sum(depths[: (self.num_layers - 1)]) : sum(depths[: (self.num_layers - 1) + 1])],
+                mlp_ratio=mlp_ratio,
+                qkv_bias=qkv_bias,
+                drop=drop_rate,
+                attn_drop=attn_drop_rate,
+                norm_layer=norm_layer,
+                c_multiplier=c_multiplier,
+                downsample=None,
+                use_checkpoint=use_checkpoint,
+            )
+            self.layers.append(layer)
+
+        else:
+            #################Full MSA for last layer#####################
+
+            self.last_window_size = (
+                self.grid_size[0] // int(2 ** (self.num_layers - 1)),
+                self.grid_size[1] // int(2 ** (self.num_layers - 1)),
+                self.grid_size[2] // int(2 ** (self.num_layers - 1)),
+                self.window_size[3],
+            )
+
+            layer = BasicLayer_FullAttention(
+                dim=int(embed_dim * c_multiplier ** (self.num_layers - 1)),
+                depth=depths[(self.num_layers - 1)],
+                num_heads=num_heads[(self.num_layers - 1)],
+                # change the window size to the entire grid size
+                window_size=self.last_window_size,
+                drop_path=dpr[sum(depths[: (self.num_layers - 1)]) : sum(depths[: (self.num_layers - 1) + 1])],
+                mlp_ratio=mlp_ratio,
+                qkv_bias=qkv_bias,
+                drop=drop_rate,
+                attn_drop=attn_drop_rate,
+                norm_layer=norm_layer,
+                c_multiplier=c_multiplier,
+                downsample=None,
+                use_checkpoint=use_checkpoint,
+            )
+            self.layers.append(layer)
+        
+        self.first_patch_expanding = PatchExpanding(dim=embed_dim * 2 ** (len(depths) - 1), norm_layer=norm_layer)
+        # build up layer
+        self.layers_up = nn.ModuleList()
+        
+        for i_layer in range(self.num_layers-1):
+            i_layer = len(depths) - i_layer - 2
+            layer = BasicLayerUp(
+                dim=int(embed_dim * (c_multiplier**i_layer)),
+                depth=depths[i_layer],
+                num_heads=num_heads[i_layer],
+                window_size=self.window_size,
+                drop_path=dpr[sum(depths[:i_layer]) : sum(depths[: i_layer + 1])],
+                mlp_ratio=mlp_ratio,
+                qkv_bias=qkv_bias,
+                drop=drop_rate,
+                attn_drop=attn_drop_rate,
+                norm_layer=norm_layer,
+                c_multiplier=c_multiplier,
+                upsample=PatchExpanding if i_layer > 0 else None,
+                use_checkpoint=use_checkpoint,
+                )
+            self.layers_up.append(layer)
+        self.norm_up = norm_layer(embed_dim)
+        self.decoder_pred = nn.Linear(embed_dim * 2 ** (len(depths) - 1) // 8, patch_size[0] ** 3 * in_chans, bias=True)
+
+    def random_masking(self, sequence):
+        if self.spatial_mask == 'random' and self.time_mask == 'random':
+            import ipdb; ipdb.set_trace()
+            batch_size, seq_length, dim = sequence.shape
+            len_keep = int(seq_length * (1 - self.config.mask_ratio))
+
+            if noise is None:
+                noise = torch.rand(batch_size, seq_length, device=sequence.device)  # noise in [0, 1]
+
+            # sort noise for each sample
+            ids_shuffle = torch.argsort(noise, dim=1)  # ascend: small is keep, large is remove
+            ids_restore = torch.argsort(ids_shuffle, dim=1)
+
+            # keep the first subset
+            ids_keep = ids_shuffle[:, :len_keep]
+            sequence_unmasked = torch.gather(sequence, dim=1, index=ids_keep.unsqueeze(-1).repeat(1, 1, dim))
+
+            # generate the binary mask: 0 is keep, 1 is remove
+            mask = torch.ones([batch_size, seq_length], device=sequence.device)
+            mask[:, :len_keep] = 0
+            # unshuffle to get the binary mask
+            mask = torch.gather(mask, dim=1, index=ids_restore)
+
+            new_sequence = torch.clone(sequence)
+
+        elif self.spatial_mask == 'atlas' and self.time_mask == 'random':
+            pass
+        elif self.spatial_mask == 'window' and self.time_mask == 'random':
+            sequence = rearrange(sequence, 'B C D H W T -> B D H W T C')
+            B, D, H, W, T, C = sequence.shape
+            dims = (B, D, H, W, T)
+            windows = window_partition_with_b(sequence, self.window_size)
+            B, N, window_volume, D = windows.shape
+
+            overall_mask = np.zeros([B, N])
+            for i in range(B):
+                num_mask = int(N * self.mask_ratio)
+                num_unmask = N - num_mask
+                mask = np.hstack([
+                    np.zeros(num_unmask),
+                    np.ones(num_mask),
+                ])
+                np.random.shuffle(mask)
+                overall_mask[i, :] = mask
+
+            overall_mask = torch.from_numpy(overall_mask).to(torch.bool)
+            windows = rearrange(windows, 'B N W C -> (B N) W C')
+            overall_mask = rearrange(overall_mask, 'B N -> (B N)')
+            windows[overall_mask] = self.mask_token
+            overall_mask = rearrange(overall_mask, '(B N) -> B N', B=B)
+            overall_mask = overall_mask.cuda()
+            new_sequence = window_reverse(windows, self.window_size, dims)
+            new_sequence = rearrange(new_sequence, 'B D H W T C -> B C D H W T')
+        elif self.spatial_mask == 'random' and self.time_mask == 'tube':
+            pass
+        elif self.spatial_mask == 'atlas' and self.time_mask == 'tube':
+            pass
+        elif self.spatial_mask == 'window' and self.time_mask == 'tube':
+            pass
+        else:
+            import ipdb; ipdb.set_trace()
+
+        return new_sequence, overall_mask
+
+
+    def forward_encoder(self, x):
+        x = self.patch_embed(x)
+        # x = self.pos_drop(x)
+        x, mask = self.random_masking(x)
+
+        for i in range(self.num_layers):
+            x = self.pos_embeds[i](x)
+            x = self.layers[i](x.contiguous())
+            # torch.Size([16, 72, 8, 8, 8, 20])
+            # torch.Size([16, 144, 4, 4, 4, 20])
+            # torch.Size([16, 288, 2, 2, 2, 20])
+            # torch.Size([16, 288, 2, 2, 2, 20])
+
+        return x, mask
+
+    def forward_decoder(self, x):
+        # torch.Size([16, 288, 2, 2, 2, 20])
+        x = rearrange(x, 'B C D H W T -> B D H W T C')
+        x = self.first_patch_expanding(x)
+        x = rearrange(x, 'B D H W T C -> B C D H W T')
+        # torch.Size([16, 144, 4, 4, 4, 20])
+
+        for layer in self.layers_up:
+            x = layer(x)
+
+        x = rearrange(x, 'B C D H W T -> B D H W T C')
+        x = self.norm_up(x)
+        x = self.decoder_pred(x)
+        x = rearrange(x, 'B D H W T (P1 P2 P3 C) -> B C (D P1) (H P2) (W P3) T', C=self.in_chans, P1=self.patch_size[0], P2=self.patch_size[1], P3=self.patch_size[2])
 
         return x
+    
+    def forward_loss(self, x, pred, mask):
+        x = self.patch_embed(x)
+        pred = self.patch_embed(pred)
+        x = rearrange(x, 'B C D H W T -> B D H W T C')
+        pred = rearrange(pred, 'B C D H W T -> B D H W T C')
+        x_windows = window_partition_with_b(x, self.window_size)
+        pred_windows = window_partition_with_b(pred, self.window_size)
+        loss = (x_windows - pred_windows) ** 2
+        loss = loss.mean(dim=-1)
+        loss = loss.mean(dim=-1)
+        loss = (loss * mask).sum() / mask.sum()
+
+        return loss
+
+    def forward(self, x):
+        if self.to_float:
+            # converting tensor to float
+            x = x.float()
+
+        latent, mask = self.forward_encoder(x)
+        pred = self.forward_decoder(latent)
+        loss = self.forward_loss(x, pred, mask)
+
+        return pred, loss

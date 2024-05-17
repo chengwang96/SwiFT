@@ -158,7 +158,7 @@ def cli_main():
         for k, v in ckpt['state_dict'].items():
             if 'model.' in k: #transformer-related layers
                 new_state_dict[k.removeprefix("model.")] = v
-        model.model.load_state_dict(new_state_dict)
+        model.model.load_state_dict(new_state_dict, strict=False)
 
     if args.freeze_feature_extractor:
         # layers are frozen by using eval()

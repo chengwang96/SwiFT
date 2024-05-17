@@ -10,6 +10,7 @@ from .parser import str2bool
 from sklearn.model_selection import StratifiedShuffleSplit
 from sklearn.preprocessing import LabelEncoder
 
+
 class fMRIDataModule(pl.LightningDataModule):
     def __init__(self, **kwargs):
         super().__init__()
@@ -17,7 +18,7 @@ class fMRIDataModule(pl.LightningDataModule):
 
         # generate splits folder
         if self.hparams.pretraining:
-                split_dir_path = f'./data/splits/{self.hparams.dataset_name}/pretraining'
+            split_dir_path = f'./data/splits/{self.hparams.dataset_name}/pretraining'
         else:
             split_dir_path = f'./data/splits/{self.hparams.dataset_name}'
         os.makedirs(split_dir_path, exist_ok=True)
@@ -97,7 +98,7 @@ class fMRIDataModule(pl.LightningDataModule):
             if self.hparams.downstream_task == 'sex': task_name = 'Gender'
             elif self.hparams.downstream_task == 'age': task_name = 'age'
             # CogTotalComp_AgeAdj CogTotalComp_Unadj Strength_AgeAdj Strength_Unadj ReadEng_AgeAdj ReadEng_Unadj 
-            elif self.hparams.downstream_task == 'int_total': task_name = 'ReadEng_Unadj'
+            elif self.hparams.downstream_task == 'int_total': task_name = 'CogTotalComp_AgeAdj'
             else: raise NotImplementedError()
 
             print('task_name = {}'.format(task_name))
@@ -175,16 +176,17 @@ class fMRIDataModule(pl.LightningDataModule):
         params = {
                 "root": self.hparams.image_path,
                 "sequence_length": self.hparams.sequence_length,
-                "contrastive":self.hparams.use_contrastive,
-                "contrastive_type":self.hparams.contrastive_type,
+                "contrastive": self.hparams.use_contrastive,
+                "contrastive_type": self.hparams.contrastive_type,
+                "mae": self.hparams.use_mae,
                 "stride_between_seq": self.hparams.stride_between_seq,
                 "stride_within_seq": self.hparams.stride_within_seq,
                 "with_voxel_norm": self.hparams.with_voxel_norm,
                 "downstream_task": self.hparams.downstream_task,
                 "shuffle_time_sequence": self.hparams.shuffle_time_sequence,
                 "input_type": self.hparams.input_type,
-                "label_scaling_method" : self.hparams.label_scaling_method,
-                "dtype":'float16'}
+                "label_scaling_method": self.hparams.label_scaling_method,
+                "dtype": 'float16'}
         
         subject_dict = self.make_subject_dict()
         if os.path.exists(self.split_file_path):

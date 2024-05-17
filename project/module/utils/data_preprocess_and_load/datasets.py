@@ -30,7 +30,7 @@ class BaseDataset(Dataset):
         self.kwargs = kwargs
     
     def load_sequence(self, subject_path, start_frame, sample_duration, num_frames=None): 
-        if self.contrastive:
+        if self.contrastive or self.mae:
             num_frames = len(os.listdir(subject_path)) - 2
             y = []
             load_fnames = [f'frame_{frame}.pt' for frame in range(start_frame, start_frame+sample_duration,self.stride_within_seq)]
@@ -43,21 +43,24 @@ class BaseDataset(Dataset):
                 y.append(y_loaded)
             y = torch.cat(y, dim=4)
             
-            random_y = []
-            
-            full_range = np.arange(0, num_frames-sample_duration+1)
-            # exclude overlapping sub-sequences within a subject
-            exclude_range = np.arange(start_frame-sample_duration, start_frame+sample_duration)
-            available_choices = np.setdiff1d(full_range, exclude_range)
-            random_start_frame = np.random.choice(available_choices, size=1, replace=False)[0]
-            load_fnames = [f'frame_{frame}.pt' for frame in range(random_start_frame, random_start_frame+sample_duration,self.stride_within_seq)]
-            if self.with_voxel_norm:
-                load_fnames += ['voxel_mean.pt', 'voxel_std.pt']
-            for fname in load_fnames:
-                img_path = os.path.join(subject_path, fname)
-                y_loaded = torch.load(img_path).unsqueeze(0)
-                random_y.append(y_loaded)
-            random_y = torch.cat(random_y, dim=4)
+            if self.mae:
+                random_y = torch.zeros(1)
+            else:
+                random_y = []
+                
+                full_range = np.arange(0, num_frames-sample_duration+1)
+                # exclude overlapping sub-sequences within a subject
+                exclude_range = np.arange(start_frame-sample_duration, start_frame+sample_duration)
+                available_choices = np.setdiff1d(full_range, exclude_range)
+                random_start_frame = np.random.choice(available_choices, size=1, replace=False)[0]
+                load_fnames = [f'frame_{frame}.pt' for frame in range(random_start_frame, random_start_frame+sample_duration,self.stride_within_seq)]
+                if self.with_voxel_norm:
+                    load_fnames += ['voxel_mean.pt', 'voxel_std.pt']
+                for fname in load_fnames:
+                    img_path = os.path.join(subject_path, fname)
+                    y_loaded = torch.load(img_path).unsqueeze(0)
+                    random_y.append(y_loaded)
+                random_y = torch.cat(random_y, dim=4)
             return (y, random_y)
 
         else: # without contrastive learning
@@ -112,7 +115,7 @@ class S1200(BaseDataset):
         _, subject, subject_path, start_frame, sequence_length, num_frames, target, sex = self.data[index]
         # target = self.label_dict[target] if isinstance(target, str) else target.float()
 
-        if self.contrastive:
+        if self.contrastive or self.mae:
             y, rand_y = self.load_sequence(subject_path, start_frame, sequence_length)
 
             background_value = y.flatten()[0]
@@ -121,11 +124,12 @@ class S1200(BaseDataset):
             y = torch.nn.functional.pad(y, (3, 2, 4, 4, 3, 2), value=background_value)
             y = y.permute(0,2,3,4,1)
 
-            background_value = rand_y.flatten()[0]
-            rand_y = rand_y.permute(0,4,1,2,3)
-            # rand_y = torch.nn.functional.pad(rand_y, (8, 7, 2, 1, 11, 10), value=background_value) # adjust this padding level according to your data
-            rand_y = torch.nn.functional.pad(rand_y, (3, 2, 4, 4, 3, 2), value=background_value)
-            rand_y = rand_y.permute(0,2,3,4,1)
+            if self.contrastive:
+                background_value = rand_y.flatten()[0]
+                rand_y = rand_y.permute(0,4,1,2,3)
+                # rand_y = torch.nn.functional.pad(rand_y, (8, 7, 2, 1, 11, 10), value=background_value) # adjust this padding level according to your data
+                rand_y = torch.nn.functional.pad(rand_y, (3, 2, 4, 4, 3, 2), value=background_value)
+                rand_y = rand_y.permute(0,2,3,4,1)
 
             return {
                 "fmri_sequence": (y, rand_y),
@@ -186,7 +190,7 @@ class ABCD(BaseDataset):
         #age = self.label_dict[age] if isinstance(age, str) else age.float()
         
         #contrastive learning
-        if self.contrastive:
+        if self.contrastive or self.mae:
             y, rand_y = self.load_sequence(subject_path, start_frame, sequence_length)
 
             background_value = y.flatten()[0]
@@ -264,7 +268,7 @@ class UKB(BaseDataset):
 
     def __getitem__(self, index):
         _, subject_name, subject_path, start_frame, sequence_length, num_frames, target, sex = self.data[index]
-        if self.contrastive:
+        if self.contrastive or self.mae:
                 y, rand_y = self.load_sequence(subject_path, start_frame, sequence_length)
 
                 background_value = y.flatten()[0]
@@ -325,7 +329,7 @@ class Dummy(BaseDataset):
         sex = torch.randint(0,2,(1,)).float()
         target = torch.randint(0,2,(1,)).float()
 
-        if self.contrastive:
+        if self.contrastive or self.mae:
             rand_y = torch.randn(( 1, 96, 96, 96, sequence_length),dtype=torch.float16)
             return {
                 "fmri_sequence": (y, rand_y),
