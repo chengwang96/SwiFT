@@ -8,7 +8,7 @@ RESUME_ARGS='--load_model_path ./output/swift_pretrain_mae/checkpt-epoch=09-vali
 
 # export NEPTUNE_API_TOKEN="{neptune API token}"
 
-export CUDA_VISIBLE_DEVICES=2,5,6,7
+export CUDA_VISIBLE_DEVICES=0,1,2,3
 export NCCL_P2P_DISABLE=1
 
 python project/main.py $TRAINER_ARGS $MAIN_ARGS $DEFAULT_ARGS $DATA_ARGS $OPTIONAL_ARGS $RESUME_ARGS \

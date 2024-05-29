@@ -138,7 +138,6 @@ class S1200(BaseDataset):
                 "TR": start_frame,
                 "sex": sex
             }
-
         else:
             y = self.load_sequence(subject_path, start_frame, sequence_length, num_frames)
 

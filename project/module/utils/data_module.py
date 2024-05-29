@@ -26,8 +26,6 @@ class fMRIDataModule(pl.LightningDataModule):
         
         self.setup()
 
-        #pl.seed_everything(seed=self.hparams.data_seed)
-
     def get_dataset(self):
         if self.hparams.dataset_name == "Dummy":
             return Dummy
@@ -49,6 +47,7 @@ class fMRIDataModule(pl.LightningDataModule):
         train_idx = np.where(np.in1d(subj_idx, train_names))[0].tolist()
         val_idx = np.where(np.in1d(subj_idx, val_names))[0].tolist()
         test_idx = np.where(np.in1d(subj_idx, test_names))[0].tolist()
+        
         return train_idx, val_idx, test_idx
     
     def save_split(self, sets_dict):
@@ -59,6 +58,7 @@ class fMRIDataModule(pl.LightningDataModule):
                     f.write(str(subj_name) + "\n")
                     
     def determine_split_randomly(self, S):
+        np.random.seed(0)
         S = list(S.keys())
         S_train = int(len(S) * self.hparams.train_split)
         S_val = int(len(S) * self.hparams.val_split)
@@ -68,6 +68,7 @@ class fMRIDataModule(pl.LightningDataModule):
         S_test = np.setdiff1d(S, np.concatenate([S_train, S_val])) # np.setdiff1d(np.arange(S), np.concatenate([S_train, S_val]))
         # train_idx, val_idx, test_idx = self.convert_subject_list_to_idx_list(S_train, S_val, S_test, self.subject_list)
         self.save_split({"train_subjects": S_train, "val_subjects": S_val, "test_subjects": S_test})
+
         return S_train, S_val, S_test
     
     def load_split(self):
@@ -79,6 +80,7 @@ class fMRIDataModule(pl.LightningDataModule):
         train_names = subject_order[train_index + 1 : val_index]
         val_names = subject_order[val_index + 1 : test_index]
         test_names = subject_order[test_index + 1 :]
+
         return train_names, val_names, test_names
 
     def prepare_data(self):
@@ -209,10 +211,10 @@ class fMRIDataModule(pl.LightningDataModule):
         val_dict = {key: subject_dict[key] for key in val_names if key in subject_dict}
         test_dict = {key: subject_dict[key] for key in test_names if key in subject_dict}
         
-        self.train_dataset = Dataset(**params,subject_dict=train_dict,use_augmentations=False, train=True)
+        self.train_dataset = Dataset(**params, subject_dict=train_dict, use_augmentations=False, train=True)
         # load train mean/std of target labels to val/test dataloader
-        self.val_dataset = Dataset(**params,subject_dict=val_dict,use_augmentations=False,train=False) 
-        self.test_dataset = Dataset(**params,subject_dict=test_dict,use_augmentations=False,train=False) 
+        self.val_dataset = Dataset(**params, subject_dict=val_dict, use_augmentations=False, train=False) 
+        self.test_dataset = Dataset(**params, subject_dict=test_dict, use_augmentations=False, train=False)
         
         print("number of train_subj:", len(train_dict))
         print("number of val_subj:", len(val_dict))

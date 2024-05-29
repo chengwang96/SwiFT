@@ -248,6 +248,7 @@ class SwinTransformerBlock4D(nn.Module):
         act_layer: str = "GELU",
         norm_layer: Type[LayerNorm] = nn.LayerNorm,
         use_checkpoint: bool = False,
+        use_mamba: bool = False,
     ) -> None:
         """
         Args:
@@ -272,23 +273,26 @@ class SwinTransformerBlock4D(nn.Module):
         self.shift_size = shift_size
         self.mlp_ratio = mlp_ratio
         self.use_checkpoint = use_checkpoint
+        self.use_mamba = use_mamba
 
         self.norm1 = norm_layer(dim)
-        self.attn = WindowAttention4D(
-            dim,
-            window_size=window_size,
-            num_heads=num_heads,
-            qkv_bias=qkv_bias,
-            attn_drop=attn_drop,
-            proj_drop=drop,
-        )
-        
-        # self.mamba = Mamba(
-        #         d_model=dim, # Model dimension d_model
-        #         d_state=16,  # SSM state expansion factor
-        #         d_conv=4,    # Local convolution width
-        #         expand=2,    # Block expansion factor
-        # )
+
+        if self.use_mamba:
+            self.mamba = Mamba(
+                    d_model=dim, # Model dimension d_model
+                    d_state=16,  # SSM state expansion factor
+                    d_conv=4,    # Local convolution width
+                    expand=2,    # Block expansion factor
+            )
+        else:
+            self.attn = WindowAttention4D(
+                dim,
+                window_size=window_size,
+                num_heads=num_heads,
+                qkv_bias=qkv_bias,
+                attn_drop=attn_drop,
+                proj_drop=drop,
+            )
 
         self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
         self.norm2 = norm_layer(dim)
@@ -316,8 +320,10 @@ class SwinTransformerBlock4D(nn.Module):
             shifted_x = x
             attn_mask = None
         x_windows = window_partition(shifted_x, window_size)
-        # attn_windows = self.mamba(x_windows)
-        attn_windows = self.attn(x_windows, mask=attn_mask)
+        if self.use_mamba:
+            attn_windows = self.mamba(x_windows)
+        else:
+            attn_windows = self.attn(x_windows, mask=attn_mask)
         attn_windows = attn_windows.view(-1, *(window_size + (c,)))
         shifted_x = window_reverse(attn_windows, window_size, dims)
         if any(i > 0 for i in shift_size):
@@ -463,6 +469,7 @@ class BasicLayer(nn.Module):
         c_multiplier: int = 2,
         downsample: Optional[nn.Module] = None,
         use_checkpoint: bool = False,
+        use_mamba: bool = False,
     ) -> None:
         """
         Args:
@@ -500,6 +507,7 @@ class BasicLayer(nn.Module):
                     drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
                     norm_layer=norm_layer,
                     use_checkpoint=use_checkpoint,
+                    use_mamba=use_mamba
                 )
                 for i in range(depth)
             ]
@@ -545,6 +553,7 @@ class BasicLayerUp(nn.Module):
         c_multiplier: int = 2,
         upsample: Optional[nn.Module] = None,
         use_checkpoint: bool = False,
+        use_mamba: bool = False,
     ) -> None:
         super().__init__()
         self.window_size = window_size
@@ -566,6 +575,7 @@ class BasicLayerUp(nn.Module):
                     drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
                     norm_layer=norm_layer,
                     use_checkpoint=use_checkpoint,
+                    use_mamba=use_mamba
                 )
                 for i in range(depth)
             ]
@@ -620,6 +630,7 @@ class BasicLayer_FullAttention(nn.Module):
         c_multiplier: int = 2,
         downsample: Optional[nn.Module] = None,
         use_checkpoint: bool = False,
+        use_mamba: bool = False,
     ) -> None:
         """
         Args:
@@ -657,6 +668,7 @@ class BasicLayer_FullAttention(nn.Module):
                     drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
                     norm_layer=norm_layer,
                     use_checkpoint=use_checkpoint,
+                    use_mamba=use_mamba
                 )
                 for i in range(depth)
             ]
@@ -755,6 +767,7 @@ class SwinTransformer4D(nn.Module):
         downsample="mergingv2",
         num_classes=2,
         to_float: bool = False,
+        use_mamba: bool = False,
         **kwargs,
     ) -> None:
         """
@@ -838,6 +851,7 @@ class SwinTransformer4D(nn.Module):
             c_multiplier=c_multiplier,
             downsample=down_sample_mod if 0 < self.num_layers - 1 else None,
             use_checkpoint=use_checkpoint,
+            use_mamba=use_mamba
         )
         self.layers.append(layer)
 
@@ -857,6 +871,7 @@ class SwinTransformer4D(nn.Module):
                 c_multiplier=c_multiplier,
                 downsample=down_sample_mod if i_layer < self.num_layers - 1 else None,
                 use_checkpoint=use_checkpoint,
+                use_mamba=use_mamba
             )
             self.layers.append(layer)
 
@@ -875,6 +890,7 @@ class SwinTransformer4D(nn.Module):
                 c_multiplier=c_multiplier,
                 downsample=None,
                 use_checkpoint=use_checkpoint,
+                use_mamba=use_mamba
             )
             self.layers.append(layer)
 
@@ -903,6 +919,7 @@ class SwinTransformer4D(nn.Module):
                 c_multiplier=c_multiplier,
                 downsample=None,
                 use_checkpoint=use_checkpoint,
+                use_mamba=use_mamba
             )
             self.layers.append(layer)
 
@@ -952,9 +969,10 @@ class SwinTransformer4DMAE(nn.Module):
         last_layer_full_MSA: bool = False,
         downsample="mergingv2",
         to_float: bool = False,
-        mask_ratio: float = 0.0,
+        mask_ratio: float = 0.1,
         spatial_mask="random",
         time_mask="random",
+        use_mamba: bool = False,
         **kwargs,
     ) -> None:
         super().__init__()
@@ -966,6 +984,7 @@ class SwinTransformer4DMAE(nn.Module):
         self.embed_dim = embed_dim
         self.patch_norm = patch_norm
         self.window_size = window_size
+        self.tube_window_size = [1, 1, 1, window_size[-1]]
         self.first_window_size = first_window_size
         self.patch_size = patch_size
         self.to_float = to_float
@@ -1019,6 +1038,7 @@ class SwinTransformer4DMAE(nn.Module):
             c_multiplier=c_multiplier,
             downsample=down_sample_mod if 0 < self.num_layers - 1 else None,
             use_checkpoint=use_checkpoint,
+            use_mamba=use_mamba
         )
         self.layers.append(layer)
 
@@ -1038,6 +1058,7 @@ class SwinTransformer4DMAE(nn.Module):
                 c_multiplier=c_multiplier,
                 downsample=down_sample_mod if i_layer < self.num_layers - 1 else None,
                 use_checkpoint=use_checkpoint,
+                use_mamba=use_mamba
             )
             self.layers.append(layer)
 
@@ -1056,9 +1077,9 @@ class SwinTransformer4DMAE(nn.Module):
                 c_multiplier=c_multiplier,
                 downsample=None,
                 use_checkpoint=use_checkpoint,
+                use_mamba=use_mamba
             )
             self.layers.append(layer)
-
         else:
             #################Full MSA for last layer#####################
 
@@ -1084,6 +1105,7 @@ class SwinTransformer4DMAE(nn.Module):
                 c_multiplier=c_multiplier,
                 downsample=None,
                 use_checkpoint=use_checkpoint,
+                use_mamba=use_mamba
             )
             self.layers.append(layer)
         
@@ -1107,7 +1129,8 @@ class SwinTransformer4DMAE(nn.Module):
                 c_multiplier=c_multiplier,
                 upsample=PatchExpanding if i_layer > 0 else None,
                 use_checkpoint=use_checkpoint,
-                )
+                use_mamba=use_mamba
+            )
             self.layers_up.append(layer)
         self.norm_up = norm_layer(embed_dim)
         self.decoder_pred = nn.Linear(embed_dim * 2 ** (len(depths) - 1) // 8, patch_size[0] ** 3 * in_chans, bias=True)
@@ -1115,28 +1138,30 @@ class SwinTransformer4DMAE(nn.Module):
     def random_masking(self, sequence):
         if self.spatial_mask == 'random' and self.time_mask == 'random':
             import ipdb; ipdb.set_trace()
-            batch_size, seq_length, dim = sequence.shape
-            len_keep = int(seq_length * (1 - self.config.mask_ratio))
+            sequence = rearrange(sequence, 'B C D H W T -> B D H W T C')
+            B, D, H, W, T, C = sequence.shape
+            sequence = rearrange(sequence, 'B D H W T C -> B (D H W T) C')
+            B, N, C = sequence.shape
 
-            if noise is None:
-                noise = torch.rand(batch_size, seq_length, device=sequence.device)  # noise in [0, 1]
+            overall_mask = np.zeros([B, N])
+            for i in range(B):
+                num_mask = int(N * self.mask_ratio)
+                num_unmask = N - num_mask
+                mask = np.hstack([
+                    np.zeros(num_unmask),
+                    np.ones(num_mask),
+                ])
+                np.random.shuffle(mask)
+                overall_mask[i, :] = mask
 
-            # sort noise for each sample
-            ids_shuffle = torch.argsort(noise, dim=1)  # ascend: small is keep, large is remove
-            ids_restore = torch.argsort(ids_shuffle, dim=1)
-
-            # keep the first subset
-            ids_keep = ids_shuffle[:, :len_keep]
-            sequence_unmasked = torch.gather(sequence, dim=1, index=ids_keep.unsqueeze(-1).repeat(1, 1, dim))
-
-            # generate the binary mask: 0 is keep, 1 is remove
-            mask = torch.ones([batch_size, seq_length], device=sequence.device)
-            mask[:, :len_keep] = 0
-            # unshuffle to get the binary mask
-            mask = torch.gather(mask, dim=1, index=ids_restore)
-
-            new_sequence = torch.clone(sequence)
-
+            overall_mask = torch.from_numpy(overall_mask).to(torch.bool)
+            import ipdb; ipdb.set_trace()
+            sequence = rearrange(sequence, 'B N C -> (B N) C')
+            overall_mask = rearrange(overall_mask, 'B N -> (B N)')
+            sequence[overall_mask] = self.mask_token
+            overall_mask = rearrange(overall_mask, '(B N) -> B N', B=B)
+            overall_mask = overall_mask.cuda()
+            new_sequence = rearrange(sequence, '(B N) C -> B C D H W T', B=B, C=C, D=D, H=H, W=W, T=T)
         elif self.spatial_mask == 'atlas' and self.time_mask == 'random':
             pass
         elif self.spatial_mask == 'window' and self.time_mask == 'random':
@@ -1166,7 +1191,31 @@ class SwinTransformer4DMAE(nn.Module):
             new_sequence = window_reverse(windows, self.window_size, dims)
             new_sequence = rearrange(new_sequence, 'B D H W T C -> B C D H W T')
         elif self.spatial_mask == 'random' and self.time_mask == 'tube':
-            pass
+            sequence = rearrange(sequence, 'B C D H W T -> B D H W T C')
+            B, D, H, W, T, C = sequence.shape
+            dims = (B, D, H, W, T)
+            windows = window_partition_with_b(sequence, self.tube_window_size)
+            B, N, window_volume, D = windows.shape
+
+            overall_mask = np.zeros([B, N])
+            for i in range(B):
+                num_mask = int(N * self.mask_ratio)
+                num_unmask = N - num_mask
+                mask = np.hstack([
+                    np.zeros(num_unmask),
+                    np.ones(num_mask),
+                ])
+                np.random.shuffle(mask)
+                overall_mask[i, :] = mask
+
+            overall_mask = torch.from_numpy(overall_mask).to(torch.bool)
+            windows = rearrange(windows, 'B N W C -> (B N) W C')
+            overall_mask = rearrange(overall_mask, 'B N -> (B N)')
+            windows[overall_mask] = self.mask_token
+            overall_mask = rearrange(overall_mask, '(B N) -> B N', B=B)
+            overall_mask = overall_mask.cuda()
+            new_sequence = window_reverse(windows, self.tube_window_size, dims)
+            new_sequence = rearrange(new_sequence, 'B D H W T C -> B C D H W T')
         elif self.spatial_mask == 'atlas' and self.time_mask == 'tube':
             pass
         elif self.spatial_mask == 'window' and self.time_mask == 'tube':
@@ -1175,7 +1224,6 @@ class SwinTransformer4DMAE(nn.Module):
             import ipdb; ipdb.set_trace()
 
         return new_sequence, overall_mask
-
 
     def forward_encoder(self, x):
         x = self.patch_embed(x)
@@ -1209,21 +1257,43 @@ class SwinTransformer4DMAE(nn.Module):
 
         return x
     
+    def patchify(self, x):
+        B, C, H, W, D, T = x.shape
+        pH, pW, pD = self.grid_size
+        sH, sW, sD, sT = self.patch_size
+        embed_dim = self.patch_size[0] * self.patch_size[1] * self.patch_size[2] * self.patch_size[3]
+
+        x = x.view(B, C, pH, sH, pW, sW, pD, sD, -1, sT)
+        x = x.permute(0, 2, 4, 6, 8, 3, 5, 7, 9, 1).contiguous().view(-1, sH * sW * sD * sT * C)
+        x = x.view(B, pH, pW, pD, -1, embed_dim).contiguous()
+
+        return x
+    
     def forward_loss(self, x, pred, mask):
-        x = self.patch_embed(x)
-        pred = self.patch_embed(pred)
-        x = rearrange(x, 'B C D H W T -> B D H W T C')
-        pred = rearrange(pred, 'B C D H W T -> B D H W T C')
-        x_windows = window_partition_with_b(x, self.window_size)
-        pred_windows = window_partition_with_b(pred, self.window_size)
-        loss = (x_windows - pred_windows) ** 2
-        loss = loss.mean(dim=-1)
-        loss = loss.mean(dim=-1)
-        loss = (loss * mask).sum() / mask.sum()
+        if self.spatial_mask == 'random' and self.time_mask == 'random':
+            import ipdb; ipdb.set_trace()
+            x_patch = self.patchify(x)
+            pred_patch = self.patchify(pred)
+            loss = (x_windows - pred_windows) ** 2
+            loss = loss.mean(dim=-1)
+            loss = loss.mean(dim=-1)
+            loss = (loss * mask).sum() / mask.sum()
+        elif self.spatial_mask == 'window' and self.time_mask == 'random':
+            x_patch = self.patchify(x)
+            pred_patch = self.patchify(pred)
+            x_windows = window_partition_with_b(x_patch, self.window_size)
+            pred_windows = window_partition_with_b(pred_patch, self.window_size)
+            loss = (x_windows - pred_windows) ** 2
+            loss = loss.mean(dim=-1)
+            loss = loss.mean(dim=-1)
+            loss = (loss * mask).sum() / mask.sum()
 
         return loss
 
     def forward(self, x):
+        if type(x) == list:
+            x = x[0]
+
         if self.to_float:
             # converting tensor to float
             x = x.float()
@@ -1232,4 +1302,4 @@ class SwinTransformer4DMAE(nn.Module):
         pred = self.forward_decoder(latent)
         loss = self.forward_loss(x, pred, mask)
 
-        return pred, loss
+        return [pred, mask], loss

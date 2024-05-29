@@ -30,7 +30,7 @@ from einops import rearrange
 from sklearn.preprocessing import LabelEncoder, StandardScaler, MinMaxScaler, KBinsDiscretizer
 
 class LitClassifier(pl.LightningModule):
-    def __init__(self,data_module, **kwargs):
+    def __init__(self, data_module, **kwargs):
         super().__init__()
         self.save_hyperparameters(kwargs) # save hyperparameters except data_module (data_module cannot be pickled as a checkpoint)
        
@@ -114,6 +114,8 @@ class LitClassifier(pl.LightningModule):
             fmri = self.augment(fmri)
 
         feature = self.model(fmri)
+        if type(feature) == tuple:
+            feature = feature[0]
 
         # Classification task
         if self.hparams.downstream_task == 'sex' or self.hparams.downstream_task_type == 'classification' or self.hparams.scalability_check:
@@ -196,7 +198,15 @@ class LitClassifier(pl.LightningModule):
                 if (len(subj) != len(tuple(subj))) and mode == 'train':
                     print('Some sub-sequences in a batch came from the same subject!')
                 
-                pred, loss = self.model(self.augment(y))
+                if mode == 'train':
+                    augment_y = self.augment(y)
+                else:
+                    augment_y = y
+                pred_list, loss = self.model(augment_y)
+                pred = pred_list[0]
+                mask = pred_list[1]
+                if mode == 'valid' and loss.item() > 3:
+                    print(y[0, 0, 30, 30, 30])
 
                 result_dict = {
                     f"{mode}_loss": loss,
@@ -302,6 +312,7 @@ class LitClassifier(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         loss = self._calculate_loss(batch, mode="train")
+
         return loss
 
     def validation_step(self, batch, batch_idx, dataloader_idx):
@@ -316,12 +327,10 @@ class LitClassifier(pl.LightningModule):
                 output = torch.stack([logits[1].squeeze(), target], dim=1) # logits[1] : regression head
             else:
                 output = torch.stack([logits.squeeze(), target.squeeze()], dim=1)
+            
             return (subj, output.detach().cpu())
 
     def validation_epoch_end(self, outputs):
-        # called at the end of the validation epoch
-        # outputs is an array with what you returned in validation_step for each batch
-        # outputs = [{'loss': batch_0_loss}, {'loss': batch_1_loss}, ..., {'loss': batch_n_loss}] 
         if not self.hparams.pretraining:
             outputs_valid = outputs[0]
             outputs_test = outputs[1]
@@ -340,10 +349,6 @@ class LitClassifier(pl.LightningModule):
             total_out_valid = torch.cat(out_valid_list, dim=0)
             total_out_test = torch.cat(out_test_list, dim=0)
 
-            # save model predictions if it is needed for future analysis
-            # self._save_predictions(subj_valid,total_out_valid,mode="valid")
-            # self._save_predictions(subj_test,total_out_test, mode="test") 
-                
             # evaluate 
             self._evaluate_metrics(subj_valid, total_out_valid, mode="valid")
             self._evaluate_metrics(subj_test, total_out_test, mode="test")
@@ -395,9 +400,13 @@ class LitClassifier(pl.LightningModule):
                 pickle.dump(self.subject_accuracy, fw)
 
     def test_step(self, batch, batch_idx):
-        subj, logits, target = self._compute_logits(batch)
-        output = torch.stack([logits.squeeze(), target.squeeze()], dim=1)
-        return (subj, output)
+        if self.hparams.pretraining:
+            self._calculate_loss(batch, mode="test")
+        else:
+            subj, logits, target = self._compute_logits(batch)
+            output = torch.stack([logits.squeeze(), target.squeeze()], dim=1)
+            
+            return (subj, output)
 
     def test_epoch_end(self, outputs):
         if not self.hparams.pretraining:
@@ -533,6 +542,7 @@ class LitClassifier(pl.LightningModule):
         group.add_argument("--last_layer_full_MSA", type=str2bool, default=False, help="whether to use full-scale multi-head self-attention at the last layers")
         group.add_argument("--clf_head_version", type=str, default="v1", help="clf head version, v2 has a hidden layer")
         group.add_argument("--attn_drop_rate", type=float, default=0, help="dropout rate of attention layers")
+        group.add_argument("--use_mamba", action='store_true', help="whether to use mamba")
 
         # others
         group.add_argument("--scalability_check", action='store_true', help="whether to check scalability")

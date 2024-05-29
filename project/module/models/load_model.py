@@ -27,7 +27,8 @@ def load_model(model_name, hparams=None):
             to_float=to_float,
             drop_rate=hparams.attn_drop_rate,
             drop_path_rate=hparams.attn_drop_rate,
-            attn_drop_rate=hparams.attn_drop_rate
+            attn_drop_rate=hparams.attn_drop_rate,
+            use_mamba=hparams.use_mamba,
         )
     elif model_name == "swin4d_mae":
         net = SwinTransformer4DMAE(
@@ -47,7 +48,8 @@ def load_model(model_name, hparams=None):
             attn_drop_rate=hparams.attn_drop_rate,
             mask_ratio=hparams.mask_ratio,
             spatial_mask=hparams.spatial_mask,
-            time_mask=hparams.time_mask
+            time_mask=hparams.time_mask,
+            use_mamba=hparams.use_mamba,
         )
     elif model_name == "emb_mlp":
         from .emb_mlp import mlp
