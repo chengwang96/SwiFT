@@ -131,24 +131,27 @@ class fMRIDataModule(pl.LightningDataModule):
                     final_dict[subject]=[sex,target]
             
         elif self.hparams.dataset_name == "ABCD":
-            subject_list = [subj[4:] for subj in os.listdir(img_root)]
+            subject_list = [subj for subj in os.listdir(img_root)]
             
-            meta_data = pd.read_csv(os.path.join(self.hparams.image_path, "metadata", "ABCD_phenotype_total.csv"))
+            meta_data = pd.read_csv(os.path.join(self.hparams.image_path, "metadata", "abcd-rest.csv"))
             if self.hparams.downstream_task == 'sex': task_name = 'sex'
             elif self.hparams.downstream_task == 'age': task_name = 'age'
             elif self.hparams.downstream_task == 'int_total': task_name = 'nihtbx_totalcomp_uncorrected'
             else: raise ValueError('downstream task not supported')
            
             if self.hparams.downstream_task == 'sex':
-                meta_task = meta_data[['subjectkey',task_name]].dropna()
+                meta_task = meta_data[['subjectkey', task_name]].dropna()
             else:
-                meta_task = meta_data[['subjectkey',task_name,'sex']].dropna()
+                meta_task = meta_data[['subjectkey', task_name, 'sex']].dropna()
             
             for subject in subject_list:
                 if subject in meta_task['subjectkey'].values:
                     target = meta_task[meta_task["subjectkey"]==subject][task_name].values[0]
+                    if task_name == 'sex':
+                        target = 1 if target == "M" else 0
                     sex = meta_task[meta_task["subjectkey"]==subject]["sex"].values[0]
-                    final_dict[subject]=[sex,target]
+                    sex = 1 if sex == "M" else 0
+                    final_dict[subject]=[sex, target]
             
         elif self.hparams.dataset_name == "UKB":
             if self.hparams.downstream_task == 'sex': task_name = 'sex'

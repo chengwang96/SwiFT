@@ -167,7 +167,7 @@ class ABCD(BaseDataset):
             sex, target = subject_dict[subject_name]
             # subject_name = subject[4:]
             
-            subject_path = os.path.join(img_root, 'sub-'+subject_name)
+            subject_path = os.path.join(img_root, subject_name)
 
             num_frames = len(os.listdir(subject_path)) - 2 # voxel mean & std
             session_duration = num_frames - self.sample_duration + 1
@@ -176,7 +176,6 @@ class ABCD(BaseDataset):
                 data_tuple = (i, subject_name, subject_path, start_frame, self.stride, num_frames, target, sex)
                 data.append(data_tuple)
                         
-        
         # train dataset
         # for regression tasks
         if self.train: 
@@ -195,14 +194,15 @@ class ABCD(BaseDataset):
             background_value = y.flatten()[0]
             y = y.permute(0,4,1,2,3)
             # ABCD image shape: 79, 97, 85
-            y = torch.nn.functional.pad(y, (6, 5, 0, 0, 9, 8), value=background_value)[:,:,:,:96,:] # adjust this padding level according to your data
+            # y = torch.nn.functional.pad(y, (6, 5, 0, 0, 9, 8), value=background_value)[:,:,:,:96,:] # adjust this padding level according to your data
             y = y.permute(0,2,3,4,1)
 
-            background_value = rand_y.flatten()[0]
-            rand_y = rand_y.permute(0,4,1,2,3)
-            # ABCD image shape: 79, 97, 85
-            rand_y = torch.nn.functional.pad(rand_y, (6, 5, 0, 0, 9, 8), value=background_value)[:,:,:,:96,:] # adjust this padding level according to your data
-            rand_y = rand_y.permute(0,2,3,4,1)
+            if self.contrastive:
+                background_value = rand_y.flatten()[0]
+                rand_y = rand_y.permute(0,4,1,2,3)
+                # ABCD image shape: 79, 97, 85
+                rand_y = torch.nn.functional.pad(rand_y, (6, 5, 0, 0, 9, 8), value=background_value)[:,:,:,:96,:] # adjust this padding level according to your data
+                rand_y = rand_y.permute(0,2,3,4,1)
 
             return {
                 "fmri_sequence": (y, rand_y),
