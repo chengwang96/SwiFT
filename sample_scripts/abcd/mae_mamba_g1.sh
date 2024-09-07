@@ -1,7 +1,7 @@
-TRAINER_ARGS='--accelerator gpu --max_epochs 10 --precision 32 --num_nodes 1 --devices 1'
+TRAINER_ARGS='--accelerator gpu --max_epochs 20 --precision 32 --num_nodes 1 --devices 1'
 MAIN_ARGS='--loggername tensorboard --classifier_module v6 --dataset_name ABCD --image_path ./data/ABCD_MNI_to_TRs_minmax'
 DATA_ARGS='--batch_size 8 --num_workers 8 --input_type rest --project_name abcd_mae_mamba_ratio0.5'
-OPTIONAL_ARGS='--c_multiplier 2 --last_layer_full_MSA True --downstream_task sex' # --use_scheduler --gamma 0.5 --cycle 0.5'
+OPTIONAL_ARGS='--c_multiplier 2 --last_layer_full_MSA True --downstream_task sex'
 RESUME_ARGS='--pretraining --use_mae --spatial_mask window --time_mask random --mask_ratio 0.5'
 
 export CUDA_VISIBLE_DEVICES=1
