@@ -67,7 +67,7 @@ def read_data(filename, load_root, save_root, subj_name, count, queue=None, scal
     data_global = data_global.type(torch.float16)
     data_global_split = torch.split(data_global, 1, 3)
     for i, TR in enumerate(data_global_split):
-        torch.save(TR.clone(), os.path.join(save_dir,"frame_"+str(i)+".pt"))
+        torch.save(TR.clone(), os.path.join(save_dir, "frame_"+str(i)+".pt"))
     
     # os.remove(path)
 
@@ -76,7 +76,7 @@ def main():
     # change two lines below according to your dataset
     dataset_name = 'ABCD'
     load_root = './data/ABCD' # This folder should have fMRI files in nifti format with subject names. Ex) sub-01.nii.gz 
-    save_root = f'./data/{dataset_name}_MNI_to_TRs_minmax'
+    save_root = f'/data/share_142/cwang/fmri/{dataset_name}_MNI_to_TRs_minmax'
     scaling_method = 'z-norm' # choose either 'z-norm'(default) or 'minmax'.
 
     # make result folders
@@ -135,9 +135,7 @@ def main():
         # data_global_split = torch.split(data_global, 1, 3)
         # import ipdb; ipdb.set_trace()
 
-
-        # change the line below according to your folder structure
-        if (subj_name not in finished_samples) or (len(os.listdir(os.path.join(save_root, subj_name))) < expected_seq_length): # preprocess if the subject folder does not exist, or the number of pth files is lower than expected sequence length. 
+        if (subj_name not in finished_samples) or (len(os.listdir(os.path.join(save_root, subj_name))) < expected_seq_length):
             try:
                 count+=1
                 p = Process(target=read_data, args=(filename, load_root, save_root, subj_name, count, queue, scaling_method))
@@ -147,6 +145,12 @@ def main():
             except Exception:
                 print('encountered problem with'+filename)
                 print(Exception)
+        else:
+            path = os.path.join(load_root, filename)
+            save_dir = os.path.join(save_root, subj_name)
+            print('{} has {} slices, save_dir is {}'.format(subj_name, len(os.listdir(os.path.join(save_root, subj_name))), save_dir))
+            # import ipdb; ipdb.set_trace()
+            # os.remove(path)
 
 
 if __name__=='__main__':

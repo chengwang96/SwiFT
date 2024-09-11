@@ -59,7 +59,7 @@ def cli_main():
         # resume previous experiment
         from module.utils.neptune_utils import get_prev_args
         args = get_prev_args(args.resume_ckpt_path, args)
-        exp_id = args.id
+        exp_id = None
         # override max_epochs if you hope to prolong the training
         args.project_name = project_name
         args.max_epochs = max_epochs
