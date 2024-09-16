@@ -1,8 +1,8 @@
-TRAINER_ARGS='--accelerator gpu --max_epochs 30 --precision 32 --num_nodes 1 --devices 2 --strategy DDP'
+TRAINER_ARGS='--accelerator gpu --max_epochs 40 --precision 32 --num_nodes 1 --devices 2 --strategy DDP'
 MAIN_ARGS='--loggername tensorboard --classifier_module v6 --dataset_name ABCD --image_path ./data/ABCD_MNI_to_TRs_minmax'
 DATA_ARGS='--batch_size 8 --num_workers 8 --input_type rest --project_name abcd_mae_swift_ratio0.5'
 OPTIONAL_ARGS='--c_multiplier 2 --last_layer_full_MSA True --downstream_task sex'
-RESUME_ARGS='--pretraining --use_mae --spatial_mask window --time_mask random --mask_ratio 0.5 --resume_ckpt_path output/abcd_mae_swift_ratio0.5/checkpt-epoch=21-valid_loss=0.48.ckpt'
+RESUME_ARGS='--pretraining --use_mae --spatial_mask window --time_mask random --mask_ratio 0.5 --resume_ckpt_path output/abcd_mae_swift_ratio0.5/checkpt-epoch=24-valid_loss=0.47.ckpt'
 
 export CUDA_VISIBLE_DEVICES=2,3
 export NCCL_P2P_DISABLE=1

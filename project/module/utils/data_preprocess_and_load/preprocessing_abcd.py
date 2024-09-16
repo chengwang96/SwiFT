@@ -150,7 +150,7 @@ def main():
             save_dir = os.path.join(save_root, subj_name)
             print('{} has {} slices, save_dir is {}'.format(subj_name, len(os.listdir(os.path.join(save_root, subj_name))), save_dir))
             # import ipdb; ipdb.set_trace()
-            # os.remove(path)
+            os.remove(path)
 
 
 if __name__=='__main__':

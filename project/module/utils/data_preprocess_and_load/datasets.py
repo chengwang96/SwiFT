@@ -1,9 +1,7 @@
-# 4D_fMRI_Transformer
 import os
 import torch
 from torch.utils.data import Dataset, IterableDataset
 
-# import augmentations #commented out because of cv errors
 import pandas as pd
 from pathlib import Path
 import numpy as np
@@ -15,6 +13,7 @@ from itertools import cycle
 import glob
 
 from sklearn.preprocessing import LabelEncoder, StandardScaler, MinMaxScaler, KBinsDiscretizer
+
 
 class BaseDataset(Dataset):
     def __init__(self, **kwargs):
@@ -88,6 +87,7 @@ class BaseDataset(Dataset):
 
     def _set_data(self, root, subject_dict):
         raise NotImplementedError("Required function")
+ 
 
 class S1200(BaseDataset):
     def __init__(self, **kwargs):
@@ -154,6 +154,7 @@ class S1200(BaseDataset):
                 "TR": start_frame,
                 "sex": sex,
             } 
+
 
 class ABCD(BaseDataset):
     def __init__(self, **kwargs):
@@ -295,13 +296,14 @@ class UKB(BaseDataset):
             y = torch.nn.functional.pad(y, (3, 2, -7, -6, 3, 2), value=background_value) # adjust this padding level according to your data
             y = y.permute(0,2,3,4,1)
             return {
-                        "fmri_sequence": y,
-                        "subject_name": subject_name,
-                        "target": target,
-                        "TR": start_frame,
-                        "sex": sex,
-                    } 
+                "fmri_sequence": y,
+                "subject_name": subject_name,
+                "target": target,
+                "TR": start_frame,
+                "sex": sex,
+            } 
     
+
 class Dummy(BaseDataset):
     def __init__(self, **kwargs):
         super().__init__(**kwargs, total_samples=100000)
