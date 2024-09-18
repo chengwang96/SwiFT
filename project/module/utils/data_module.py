@@ -3,7 +3,7 @@ import pytorch_lightning as pl
 import numpy as np
 import pandas as pd
 from torch.utils.data import DataLoader, Subset
-from .data_preprocess_and_load.datasets import S1200, ABCD, UKB, Dummy, Cobre, ADHD200, UCLA
+from .data_preprocess_and_load.datasets import S1200, ABCD, UKB, Dummy, Cobre, ADHD200, UCLA, HCPEP
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from .parser import str2bool
 
@@ -66,6 +66,8 @@ class fMRIDataModule(pl.LightningDataModule):
             return ADHD200
         elif self.hparams.dataset_name == 'UCLA':
             return UCLA
+        elif self.hparams.dataset_name == 'HCPEP':
+            return HCPEP
         else:
             raise NotImplementedError
 
@@ -292,6 +294,37 @@ class fMRIDataModule(pl.LightningDataModule):
                             import ipdb; ipdb.set_trace()
                         
                     sex = meta_task[meta_task["subject_id"]==subject]["gender"].values[0]
+                    sex = 1 if sex == "M" else 0
+                    final_dict[subject]=[sex, target]
+            
+            print('Load dataset UCLA, {} subjects'.format(len(final_dict)))
+        
+        elif self.hparams.dataset_name == "HCPEP":
+            subject_list = [subj for subj in os.listdir(img_root)]
+            
+            meta_data = pd.read_csv(os.path.join(self.hparams.image_path, "metadata", "hcpep-rest.csv"))
+            if self.hparams.downstream_task == 'sex': task_name = 'sex'
+            elif self.hparams.downstream_task == 'age': task_name = 'interview_age'
+            elif self.hparams.downstream_task == 'diagnosis': task_name = 'phenotype'
+            else: raise ValueError('downstream task not supported')
+           
+            if self.hparams.downstream_task == 'sex':
+                meta_task = meta_data[['subject_id', task_name]].dropna()
+            else:
+                meta_task = meta_data[['subject_id', task_name, 'sex']].dropna()
+            
+            for subject in subject_list:
+                if int(subject[-4:]) in meta_task['subject_id'].values:
+                    target = meta_task[meta_task["subject_id"]==int(subject[-4:])][task_name].values[0]
+                    if task_name == 'sex':
+                        target = 1 if target == "M" else 0
+                    elif task_name == 'phenotype':
+                        if target == 'Control': target = 0
+                        elif target == 'Patient': target = 1
+                        else:
+                            import ipdb; ipdb.set_trace()
+                        
+                    sex = meta_task[meta_task["subject_id"]==int(subject[-4:])]["sex"].values[0]
                     sex = 1 if sex == "M" else 0
                     final_dict[subject]=[sex, target]
             
