@@ -3,6 +3,7 @@ import torch
 import os
 import time
 from multiprocessing import Process, Queue
+import torch.nn.functional as F
 
 
 def select_middle_96(vector):
@@ -42,15 +43,7 @@ def read_data(filename, load_root, save_root, subj_name, count, queue=None, scal
     # change this line according to your dataset
     data = select_middle_96(data)
 
-    mask_path = path[:-19] + 'brain_mask.nii.gz'
-    try:
-        background = LoadImage()(mask_path)
-    except:
-        print('mask open failed')
-        return None
-    
-    background = select_middle_96(background) == 1
-    data[background] = 0
+    background = data==0
     
     if scaling_method == 'z-norm':
         global_mean = data[~background].mean()
@@ -69,15 +62,11 @@ def read_data(filename, load_root, save_root, subj_name, count, queue=None, scal
     data_global_split = torch.split(data_global, 1, 3)
     for i, TR in enumerate(data_global_split):
         torch.save(TR.clone(), os.path.join(save_dir, "frame_"+str(i)+".pt"))
-    
-    # os.remove(path)
 
 
 def main():
-    # change two lines below according to your dataset
-    dataset_name = 'ABCD'
-    load_root = './data/ABCD' # This folder should have fMRI files in nifti format with subject names. Ex) sub-01.nii.gz 
-    save_root = f'/data/share_142/cwang/fmri/{dataset_name}_MNI_to_TRs_minmax'
+    load_root = './data/hcp-d' # This folder should have fMRI files in nifti format with subject names. Ex) sub-01.nii.gz 
+    save_root = f'./data/HCPD_MNI_to_TRs_minmax'
     scaling_method = 'z-norm' # choose either 'z-norm'(default) or 'minmax'.
 
     # make result folders
@@ -90,14 +79,11 @@ def main():
     queue = Queue() 
     count = 0
     for filename in sorted(filenames):
-        if not filename.endswith('preproc_bold.nii.gz'):
+        if not filename.endswith('PA.nii.gz'):
             continue
     
-        subj_name = filename.split('-')[1][:-4]
-        # extract subject name from nifti file. [:-7] rules out '.nii.gz'
-        # we recommend you use subj_name that aligns with the subject key in a metadata file.
-
-        expected_seq_length = 300 # Specify the expected sequence length of fMRI for the case your preprocessing stopped unexpectedly and you try to resume the preprocessing.
+        subj_name = filename[:10]
+        expected_seq_length = 400
 
         # fill_zeroback = False
         # print("processing: " + filename, flush=True)
@@ -108,18 +94,9 @@ def main():
         #     print('open failed')
         #     return None
         
-        # import ipdb; ipdb.set_trace()
         # data = select_middle_96(data)
         
-        # mask_path = path[:-19] + 'brain_mask.nii.gz'
-        # try:
-        #     background = LoadImage()(mask_path)
-        # except:
-        #     print('mask open failed')
-        #     return None
-        
-        # background = select_middle_96(background) == 0
-        # data[background] = 0
+        # background = data==0
         
         # if scaling_method == 'z-norm':
         #     global_mean = data[~background].mean()
@@ -139,6 +116,7 @@ def main():
         if (subj_name not in finished_samples) or (len(os.listdir(os.path.join(save_root, subj_name))) < expected_seq_length):
             try:
                 count+=1
+                # read_data(filename, load_root, save_root, subj_name, count, queue, scaling_method)
                 p = Process(target=read_data, args=(filename, load_root, save_root, subj_name, count, queue, scaling_method))
                 p.start()
                 if count % 64 == 0: # requires more than 16 cpu cores for parallel processing
@@ -151,7 +129,7 @@ def main():
             save_dir = os.path.join(save_root, subj_name)
             print('{} has {} slices, save_dir is {}'.format(subj_name, len(os.listdir(os.path.join(save_root, subj_name))), save_dir))
             # import ipdb; ipdb.set_trace()
-            os.remove(path)
+            # os.remove(path)
 
 
 if __name__=='__main__':

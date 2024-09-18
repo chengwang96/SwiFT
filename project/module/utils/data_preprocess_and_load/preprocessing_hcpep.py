@@ -3,6 +3,7 @@ import torch
 import os
 import time
 from multiprocessing import Process, Queue
+import torch.nn.functional as F
 
 
 def select_middle_96(vector):
@@ -46,7 +47,7 @@ def read_data(filename, load_root, save_root, subj_name, count, queue=None, scal
     try:
         background = LoadImage()(mask_path)
     except:
-        print('mask open failed')
+        print('mask {} open failed'.format(mask_path))
         return None
     
     background = select_middle_96(background) == 1
@@ -74,10 +75,8 @@ def read_data(filename, load_root, save_root, subj_name, count, queue=None, scal
 
 
 def main():
-    # change two lines below according to your dataset
-    dataset_name = 'ABCD'
-    load_root = './data/ABCD' # This folder should have fMRI files in nifti format with subject names. Ex) sub-01.nii.gz 
-    save_root = f'/data/share_142/cwang/fmri/{dataset_name}_MNI_to_TRs_minmax'
+    load_root = './data/hcp-ep' # This folder should have fMRI files in nifti format with subject names. Ex) sub-01.nii.gz 
+    save_root = f'./data/HCPEP_MNI_to_TRs_minmax'
     scaling_method = 'z-norm' # choose either 'z-norm'(default) or 'minmax'.
 
     # make result folders
@@ -93,11 +92,8 @@ def main():
         if not filename.endswith('preproc_bold.nii.gz'):
             continue
     
-        subj_name = filename.split('-')[1][:-4]
-        # extract subject name from nifti file. [:-7] rules out '.nii.gz'
-        # we recommend you use subj_name that aligns with the subject key in a metadata file.
-
-        expected_seq_length = 300 # Specify the expected sequence length of fMRI for the case your preprocessing stopped unexpectedly and you try to resume the preprocessing.
+        subj_name = filename[:8]
+        expected_seq_length = 350
 
         # fill_zeroback = False
         # print("processing: " + filename, flush=True)
@@ -139,6 +135,7 @@ def main():
         if (subj_name not in finished_samples) or (len(os.listdir(os.path.join(save_root, subj_name))) < expected_seq_length):
             try:
                 count+=1
+                # read_data(filename, load_root, save_root, subj_name, count, queue, scaling_method)
                 p = Process(target=read_data, args=(filename, load_root, save_root, subj_name, count, queue, scaling_method))
                 p.start()
                 if count % 64 == 0: # requires more than 16 cpu cores for parallel processing
@@ -151,7 +148,7 @@ def main():
             save_dir = os.path.join(save_root, subj_name)
             print('{} has {} slices, save_dir is {}'.format(subj_name, len(os.listdir(os.path.join(save_root, subj_name))), save_dir))
             # import ipdb; ipdb.set_trace()
-            os.remove(path)
+            # os.remove(path)
 
 
 if __name__=='__main__':

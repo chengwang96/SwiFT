@@ -15,19 +15,14 @@ def read_data(filename,load_root,save_root,subj_name,count,queue=None,scaling_me
         return None
     
     #change this line according to your file names
-    save_dir = os.path.join(save_root,subj_name)
+    save_dir = os.path.join(save_root, subj_name)
     isExist = os.path.exists(save_dir)
     if not isExist:
         os.makedirs(save_dir)
     
     # change this line according to your dataset
     data = data[:, 14:-7, :, :]
-    # width, height, depth, time
-    # Inspect the fMRI file first using your visualization tool. 
-    # Limit the ranges of width, height, and depth to be under 96. Crop the background, not the brain regions. 
-    # Each dimension of fMRI registered to MNI space (2mm) is expected to be around 100.
-    # You can do this when you load each volume at the Dataset class, including padding backgrounds to fill dimensions under 96.
-   
+
     background = data==0
     
     if scaling_method == 'z-norm':

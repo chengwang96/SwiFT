@@ -3,7 +3,7 @@ import pytorch_lightning as pl
 import numpy as np
 import pandas as pd
 from torch.utils.data import DataLoader, Subset
-from .data_preprocess_and_load.datasets import S1200, ABCD, UKB, Dummy, Cobre
+from .data_preprocess_and_load.datasets import S1200, ABCD, UKB, Dummy, Cobre, ADHD200
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from .parser import str2bool
 
@@ -37,6 +37,8 @@ class fMRIDataModule(pl.LightningDataModule):
             return UKB
         elif self.hparams.dataset_name == 'Cobre':
             return Cobre
+        elif self.hparams.dataset_name == 'ADHD200':
+            return ADHD200
         else:
             raise NotImplementedError
 
@@ -103,7 +105,7 @@ class fMRIDataModule(pl.LightningDataModule):
             if self.hparams.downstream_task == 'sex': task_name = 'Gender'
             elif self.hparams.downstream_task == 'age': task_name = 'age'
             # CogTotalComp_AgeAdj CogTotalComp_Unadj Strength_AgeAdj Strength_Unadj ReadEng_AgeAdj ReadEng_Unadj 
-            elif self.hparams.downstream_task == 'int_total': task_name = 'Strength_AgeAdj'
+            elif self.hparams.downstream_task == 'int_total': task_name = 'CogTotalComp_AgeAdj'
             else: raise NotImplementedError()
 
             print('task_name = {}'.format(task_name))
@@ -133,6 +135,8 @@ class fMRIDataModule(pl.LightningDataModule):
                         sex = 1 if sex == "M" else 0
                     final_dict[subject]=[sex,target]
             
+            print('Load dataset HCP1200, {} subjects'.format(len(final_dict)))
+            
         elif self.hparams.dataset_name == "ABCD":
             subject_list = [subj for subj in os.listdir(img_root)]
             
@@ -155,6 +159,8 @@ class fMRIDataModule(pl.LightningDataModule):
                     sex = meta_task[meta_task["subjectkey"]==subject]["sex"].values[0]
                     sex = 1 if sex == "M" else 0
                     final_dict[subject]=[sex, target]
+            
+            print('Load dataset ABCD, {} subjects'.format(len(final_dict)))
         
         elif self.hparams.dataset_name == "Cobre":
             subject_list = [subj for subj in os.listdir(img_root)]
@@ -162,7 +168,7 @@ class fMRIDataModule(pl.LightningDataModule):
             meta_data = pd.read_csv(os.path.join(self.hparams.image_path, "metadata", "cobre-rest.csv"))
             if self.hparams.downstream_task == 'sex': task_name = 'sex'
             elif self.hparams.downstream_task == 'age': task_name = 'age'
-            elif self.hparams.downstream_task == 'dx': task_name = 'dx'
+            elif self.hparams.downstream_task == 'diagnosis': task_name = 'dx'
             else: raise ValueError('downstream task not supported')
            
             if self.hparams.downstream_task == 'sex':
@@ -187,6 +193,37 @@ class fMRIDataModule(pl.LightningDataModule):
                     sex = 1 if sex == "male" else 0
                     final_dict[subject]=[sex, target]
             
+            print('Load dataset Cobre, {} subjects'.format(len(final_dict)))
+        
+        elif self.hparams.dataset_name == "ADHD200":
+            subject_list = [subj for subj in os.listdir(img_root)]
+            
+            meta_data = pd.read_csv(os.path.join(self.hparams.image_path, "metadata", "adhd200-rest.csv"))
+            if self.hparams.downstream_task == 'sex': task_name = 'Gender'
+            elif self.hparams.downstream_task == 'age': task_name = 'Age'
+            elif self.hparams.downstream_task == 'diagnosis': task_name = 'DX'
+            else: raise ValueError('downstream task not supported')
+           
+            if self.hparams.downstream_task == 'sex':
+                meta_task = meta_data[['subject_id', task_name]].dropna()
+            else:
+                meta_task = meta_data[['subject_id', task_name, 'Gender']].dropna()
+            
+            for subject in subject_list:
+                if int(subject) in meta_task['subject_id'].values:
+                    target = meta_task[meta_task["subject_id"]==int(subject)][task_name].values[0]
+                    if task_name == 'DX':
+                        if target == 'pending': continue
+                        
+                        target = int(target)
+                        target = 1 if target > 0 else 0
+                        
+                    sex = meta_task[meta_task["subject_id"]==int(int(subject))]["Gender"].values[0]
+                    sex = int(sex)
+                    final_dict[subject]=[sex, target]
+            
+            print('Load dataset ADHD200, {} subjects'.format(len(final_dict)))
+
         elif self.hparams.dataset_name == "UKB":
             if self.hparams.downstream_task == 'sex': task_name = 'sex'
             elif self.hparams.downstream_task == 'age': task_name = 'age'
@@ -206,6 +243,8 @@ class fMRIDataModule(pl.LightningDataModule):
                     final_dict[str(subject[:7])] = [sex,target]
                 else:
                     continue 
+            
+            print('Load dataset UKB, {} subjects'.format(len(final_dict)))
         
         return final_dict
 
@@ -228,6 +267,7 @@ class fMRIDataModule(pl.LightningDataModule):
                 "dtype": 'float16'}
         
         subject_dict = self.make_subject_dict()
+        
         if os.path.exists(self.split_file_path):
             train_names, val_names, test_names = self.load_split()
         else:
@@ -242,7 +282,8 @@ class fMRIDataModule(pl.LightningDataModule):
                     del subject_dict[bad_subj]
         
         if self.hparams.limit_training_samples:
-            train_names = np.random.choice(train_names, size=self.hparams.limit_training_samples, replace=False, p=None)
+            selected_num = int(self.hparams.limit_training_samples * len(train_names))
+            train_names = np.random.choice(train_names, size=selected_num, replace=False, p=None)
         
         train_dict = {key: subject_dict[key] for key in train_names if key in subject_dict}
         val_dict = {key: subject_dict[key] for key in val_names if key in subject_dict}
@@ -309,5 +350,5 @@ class fMRIDataModule(pl.LightningDataModule):
         group.add_argument("--num_workers", type=int, default=8)
         group.add_argument("--with_voxel_norm", type=str2bool, default=False)
         group.add_argument("--shuffle_time_sequence", action='store_true')
-        group.add_argument("--limit_training_samples", type=int, default=None, help="use if you want to limit training samples")
+        group.add_argument("--limit_training_samples", type=float, default=None, help="use if you want to limit training samples")
         return parser

@@ -78,7 +78,7 @@ def read_data(filename, load_root, save_root, subj_name, count, queue=None, scal
 
 def main():
     load_root = './data/cobre' # This folder should have fMRI files in nifti format with subject names. Ex) sub-01.nii.gz 
-    save_root = f'./data/cobre_MNI_to_TRs_minmax'
+    save_root = f'./data/COBRE_MNI_to_TRs_minmax'
     scaling_method = 'z-norm' # choose either 'z-norm'(default) or 'minmax'.
 
     # make result folders

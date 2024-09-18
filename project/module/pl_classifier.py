@@ -17,7 +17,7 @@ import monai.transforms as monai_t
 
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 import nibabel as nb
-import time
+
 
 from .models.load_model import load_model
 from .utils.metrics import Metrics
@@ -65,11 +65,6 @@ class LitClassifier(pl.LightningModule):
 
         if self.hparams.adjust_thresh:
             self.threshold = 0
-        
-        self.data_start_time = time.time()
-        self.model_start_time = time.time()
-        self.data_time = 0.0
-        self.model_time = 0.0
 
     def forward(self, x):
         return self.output_head(self.model(x))
@@ -149,6 +144,7 @@ class LitClassifier(pl.LightningModule):
             if self.hparams.use_contrastive:
                 assert self.hparams.contrastive_type != "none", "Contrastive type not specified"
 
+                # B, C, H, W, D, T = image shape
                 y, diff_y = fmri
 
                 batch_size = y.shape[0]
@@ -160,10 +156,13 @@ class LitClassifier(pl.LightningModule):
                 criterion_ll = NTXentLoss(device='cuda', batch_size=2,
                                             temperature=self.hparams.temperature,
                                             use_cosine_similarity=True).cuda()
-
+                
+                # type 1: IC
+                # type 2: LL
+                # type 3: IC + LL
                 if self.hparams.contrastive_type in [1, 3]:
-                    out_global_1 = self.output_head(self.model(self.augment(y)), "g")
-                    out_global_2 = self.output_head(self.model(self.augment(diff_y)), "g")
+                    out_global_1 = self.output_head(self.model(self.augment(y)),"g")
+                    out_global_2 = self.output_head(self.model(self.augment(diff_y)),"g")
                     ic_loss = criterion(out_global_1, out_global_2)
                     loss += ic_loss
 
@@ -181,15 +180,15 @@ class LitClassifier(pl.LightningModule):
                     out_local_2.append(self.output_head(out_local_swin2, "l"))
 
                     ll_loss = 0
+                    # loop over batch size
                     for i in range(out_local_1[0].shape[0]):
+                        # out_local shape should be: BS, n_local_clips, D
                         ll_loss += criterion_ll(torch.stack(out_local_1, dim=1)[i],
                                                 torch.stack(out_local_2, dim=1)[i])
                     loss += ll_loss
 
                 result_dict = {
                     f"{mode}_loss": loss,
-                    f"{mode}_data_time": self.data_time,
-                    f"{mode}_model_time": self.model_time
                 }
             elif self.hparams.use_mae:
                 # B, C, H, W, D, T = image shape
@@ -211,8 +210,6 @@ class LitClassifier(pl.LightningModule):
 
                 result_dict = {
                     f"{mode}_loss": loss,
-                    f"{mode}_data_time": self.data_time,
-                    f"{mode}_model_time": self.model_time
                 }
         else:
             subj, logits, target = self._compute_logits(batch, augment_during_training = self.hparams.augment_during_training)
@@ -227,8 +224,6 @@ class LitClassifier(pl.LightningModule):
                 result_dict = {
                     f"{mode}_loss": loss,
                     f"{mode}_acc": acc,
-                    f"{mode}_data_time": self.data_time,
-                    f"{mode}_model_time": self.model_time
                 }
 
             elif self.hparams.downstream_task == 'age' or self.hparams.downstream_task == 'int_total' or self.hparams.downstream_task == 'int_fluid' or self.hparams.downstream_task_type == 'regression':
@@ -237,12 +232,10 @@ class LitClassifier(pl.LightningModule):
                 result_dict = {
                     f"{mode}_loss": loss,
                     f"{mode}_mse": loss,
-                    f"{mode}_l1_loss": l1,
-                    f"{mode}_data_time": self.data_time,
-                    f"{mode}_model_time": self.model_time
+                    f"{mode}_l1_loss": l1
                 }
         
-        self.log_dict(result_dict, prog_bar=True, sync_dist=False, add_dataloader_idx=False, on_step=True, on_epoch=True, batch_size=self.hparams.batch_size)
+        self.log_dict(result_dict, prog_bar=True, sync_dist=False, add_dataloader_idx=False, on_step=True, on_epoch=True, batch_size=self.hparams.batch_size) # batch_size = batch_size
         
         return loss
 
@@ -324,7 +317,7 @@ class LitClassifier(pl.LightningModule):
             elif self.hparams.label_scaling_method == 'minmax':
                 adjusted_mse = F.mse_loss(subj_avg_logits * (self.scaler.data_max_[0] - self.scaler.data_min_[0]) + self.scaler.data_min_[0], subj_targets * (self.scaler.data_max_[0] - self.scaler.data_min_[0]) + self.scaler.data_min_[0])
                 adjusted_mae = F.l1_loss(subj_avg_logits * (self.scaler.data_max_[0] - self.scaler.data_min_[0]) + self.scaler.data_min_[0], subj_targets * (self.scaler.data_max_[0] - self.scaler.data_min_[0]) + self.scaler.data_min_[0])
-            pearson = PearsonCorrCoef().to(total_out.device)
+            pearson = PearsonCorrCoef().to(total_out_logits.device)
             prearson_coef = pearson(subj_avg_logits, subj_targets)
             
             self.log(f"{mode}_corrcoef", prearson_coef, sync_dist=True)
@@ -334,42 +327,22 @@ class LitClassifier(pl.LightningModule):
             self.log(f"{mode}_adjusted_mae", adjusted_mae, sync_dist=True) 
 
     def training_step(self, batch, batch_idx):
-        self.data_end_time = time.time()
-        self.data_time = self.data_end_time - self.data_start_time
-        self.model_start_time = time.time()
         loss = self._calculate_loss(batch, mode="train")
-        self.model_end_time = time.time()
-        self.model_time = self.model_end_time - self.model_start_time
-        self.data_start_time = time.time()
 
         return loss
 
     def validation_step(self, batch, batch_idx, dataloader_idx):
-        self.data_end_time = time.time()
-        self.data_time = self.data_end_time - self.data_start_time
-        self.model_start_time = time.time()
         if self.hparams.pretraining:
             if dataloader_idx == 0:
                 self._calculate_loss(batch, mode="valid")
             else:
                 self._calculate_loss(batch, mode="test")
-            
-            self.model_end_time = time.time()
-            self.model_time = self.model_end_time - self.model_start_time
-            self.data_start_time = time.time()
         else:
             subj, logits, target = self._compute_logits(batch)
             if self.hparams.downstream_task_type == 'multi_task':
                 output = torch.stack([logits[1].squeeze(), target], dim=1)
                 output = output.detach().cpu()
             else:
-                output = torch.stack([logits.squeeze(), target.squeeze()], dim=1)
-            
-            self.model_end_time = time.time()
-            self.model_time = self.model_end_time - self.model_start_time
-            self.data_start_time = time.time()
-
-            return (subj, output.detach().cpu())
                 output = [logits.squeeze().detach().cpu(), target.squeeze().detach().cpu()]
             
             return (subj, output)
@@ -448,24 +421,11 @@ class LitClassifier(pl.LightningModule):
                 pickle.dump(self.subject_accuracy, fw)
 
     def test_step(self, batch, batch_idx):
-        self.data_end_time = time.time()
-        self.data_time = self.data_end_time - self.data_start_time
-        self.model_start_time = time.time()
-
         if self.hparams.pretraining:
             self._calculate_loss(batch, mode="test")
-
-            self.model_end_time = time.time()
-            self.model_time = self.model_end_time - self.model_start_time
-            self.data_start_time = time.time()
         else:
+            import ipdb; ipdb.set_trace()
             subj, logits, target = self._compute_logits(batch)
-            output = torch.stack([logits.squeeze(), target.squeeze()], dim=1)
-            
-            self.model_end_time = time.time()
-            self.model_time = self.model_end_time - self.model_start_time
-            self.data_start_time = time.time()
-
             output = [logits.squeeze().detach().cpu(), target.squeeze().detach().cpu()]
 
             return (subj, output)
