@@ -224,14 +224,7 @@ class Cobre(BaseDataset):
         # index = 0
         # _, subject_name, subject_path, start_frame, sequence_length, num_frames, target, sex = self.data[index]
         # y = self.load_sequence(subject_path, start_frame, sequence_length, num_frames)
-        # background_value = y.flatten()[0]
-        # y = y.permute(0,4,1,2,3)
-        # if self.input_type == 'rest':
-        #     pad_1 = 96 - y.shape[-1]
-        #     pad_2 = 96 - y.shape[-2]
-        #     pad_3 = 96 - y.shape[-3]
-        #     y = torch.nn.functional.pad(y, (math.ceil(pad_1/2), math.floor(pad_1/2), math.ceil(pad_2/2), math.floor(pad_2/2), math.ceil(pad_3/2), math.floor(pad_3/2)), value=background_value)[:,:,:,:,:]
-        # y = y.permute(0,2,3,4,1)
+        # y = pad_to_96(y)
 
 
     def _set_data(self, root, subject_dict):
@@ -294,11 +287,70 @@ class ADHD200(BaseDataset):
         # index = 0
         # _, subject_name, subject_path, start_frame, sequence_length, num_frames, target, sex = self.data[index]
         # y = self.load_sequence(subject_path, start_frame, sequence_length, num_frames)
-        # background_value = y.flatten()[0]
-        # y = y.permute(0,4,1,2,3)
-        # if self.input_type == 'rest':
-        #     y = torch.nn.functional.pad(y, (14, 13, 0, 0, 9, 8), value=background_value)[:,:,:,:,:]
-        # y = y.permute(0,2,3,4,1)
+        # y = pad_to_96(y)
+
+
+    def _set_data(self, root, subject_dict):
+        data = []
+        img_root = os.path.join(root, 'img')
+
+        for i, subject_name in enumerate(subject_dict):
+            sex, target = subject_dict[subject_name]
+            subject_path = os.path.join(img_root, '{}'.format(subject_name))
+            num_frames = len(os.listdir(subject_path)) - 2 # voxel mean & std
+            session_duration = num_frames - self.sample_duration + 1
+
+            for start_frame in range(0, session_duration, self.stride):
+                data_tuple = (i, subject_name, subject_path, start_frame, self.stride, num_frames, target, sex)
+                data.append(data_tuple)
+                        
+        if self.train: 
+            self.target_values = np.array([tup[6] for tup in data]).reshape(-1, 1)
+
+        return data
+
+    def __getitem__(self, index):
+        _, subject_name, subject_path, start_frame, sequence_length, num_frames, target, sex = self.data[index]
+
+        #contrastive learning
+        if self.contrastive or self.mae:
+            y, rand_y = self.load_sequence(subject_path, start_frame, sequence_length)
+            y = pad_to_96(y)
+
+            if self.contrastive:
+                rand_y = pad_to_96(rand_y)
+
+            return {
+                "fmri_sequence": (y, rand_y),
+                "subject_name": subject_name,
+                "target": target,
+                "TR": start_frame,
+                "sex": sex
+            } 
+
+        # resting or task
+        else:   
+            y = self.load_sequence(subject_path, start_frame, sequence_length, num_frames)
+            y = pad_to_96(y)
+
+            return {
+                "fmri_sequence": y,
+                "subject_name": subject_name,
+                "target": target,
+                "TR": start_frame,
+                "sex": sex,
+            }
+        
+
+class UCLA(BaseDataset):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        # import ipdb; ipdb.set_trace()
+        # index = 0
+        # _, subject_name, subject_path, start_frame, sequence_length, num_frames, target, sex = self.data[index]
+        # y = self.load_sequence(subject_path, start_frame, sequence_length, num_frames)
+        # y = pad_to_96(y)
 
 
     def _set_data(self, root, subject_dict):
