@@ -8,11 +8,24 @@ import numpy as np
 import nibabel as nb
 import nilearn
 import random
+import math
 
 from itertools import cycle
 import glob
 
 from sklearn.preprocessing import LabelEncoder, StandardScaler, MinMaxScaler, KBinsDiscretizer
+
+
+def pad_to_96(y):
+    background_value = y.flatten()[0]
+    y = y.permute(0,4,1,2,3)
+    pad_1 = 96 - y.shape[-1]
+    pad_2 = 96 - y.shape[-2]
+    pad_3 = 96 - y.shape[-3]
+    y = torch.nn.functional.pad(y, (math.ceil(pad_1/2), math.floor(pad_1/2), math.ceil(pad_2/2), math.floor(pad_2/2), math.ceil(pad_3/2), math.floor(pad_3/2)), value=background_value)[:,:,:,:,:]
+    y = y.permute(0,2,3,4,1)
+
+    return y
 
 
 class BaseDataset(Dataset):
@@ -117,19 +130,10 @@ class S1200(BaseDataset):
 
         if self.contrastive or self.mae:
             y, rand_y = self.load_sequence(subject_path, start_frame, sequence_length)
-
-            background_value = y.flatten()[0]
-            y = y.permute(0,4,1,2,3)
-            # y = torch.nn.functional.pad(y, (8, 7, 2, 1, 11, 10), value=background_value) # adjust this padding level according to your data
-            y = torch.nn.functional.pad(y, (3, 2, 4, 4, 3, 2), value=background_value)
-            y = y.permute(0,2,3,4,1)
+            y = pad_to_96(y)
 
             if self.contrastive:
-                background_value = rand_y.flatten()[0]
-                rand_y = rand_y.permute(0,4,1,2,3)
-                # rand_y = torch.nn.functional.pad(rand_y, (8, 7, 2, 1, 11, 10), value=background_value) # adjust this padding level according to your data
-                rand_y = torch.nn.functional.pad(rand_y, (3, 2, 4, 4, 3, 2), value=background_value)
-                rand_y = rand_y.permute(0,2,3,4,1)
+                rand_y = pad_to_96(rand_y)
 
             return {
                 "fmri_sequence": (y, rand_y),
@@ -140,12 +144,7 @@ class S1200(BaseDataset):
             }
         else:
             y = self.load_sequence(subject_path, start_frame, sequence_length, num_frames)
-
-            background_value = y.flatten()[0]
-            y = y.permute(0,4,1,2,3)
-            # y = torch.nn.functional.pad(y, (8, 7, 2, 1, 11, 10), value=background_value)
-            y = torch.nn.functional.pad(y, (3, 2, 4, 4, 3, 2), value=background_value)
-            y = y.permute(0,2,3,4,1)
+            y = pad_to_96(y)
 
             return {
                 "fmri_sequence": y,
@@ -191,19 +190,10 @@ class ABCD(BaseDataset):
         #contrastive learning
         if self.contrastive or self.mae:
             y, rand_y = self.load_sequence(subject_path, start_frame, sequence_length)
-
-            background_value = y.flatten()[0]
-            y = y.permute(0,4,1,2,3)
-            # ABCD image shape: 79, 97, 85
-            # y = torch.nn.functional.pad(y, (6, 5, 0, 0, 9, 8), value=background_value)[:,:,:,:96,:] # adjust this padding level according to your data
-            y = y.permute(0,2,3,4,1)
+            y = pad_to_96(y)
 
             if self.contrastive:
-                background_value = rand_y.flatten()[0]
-                rand_y = rand_y.permute(0,4,1,2,3)
-                # ABCD image shape: 79, 97, 85
-                rand_y = torch.nn.functional.pad(rand_y, (6, 5, 0, 0, 9, 8), value=background_value)[:,:,:,:96,:] # adjust this padding level according to your data
-                rand_y = rand_y.permute(0,2,3,4,1)
+                rand_y = pad_to_96(rand_y)
 
             return {
                 "fmri_sequence": (y, rand_y),
@@ -216,19 +206,7 @@ class ABCD(BaseDataset):
         # resting or task
         else:   
             y = self.load_sequence(subject_path, start_frame, sequence_length, num_frames)
-
-            background_value = y.flatten()[0]
-            y = y.permute(0,4,1,2,3)
-            if self.input_type == 'rest':
-                # ABCD rest image shape: 79, 97, 85
-                # latest version might be 96,96,95
-                y = torch.nn.functional.pad(y, (6, 5, 0, 0, 9, 8), value=background_value)[:,:,:,:96,:] # adjust this padding level according to your data
-            elif self.input_type == 'task':
-                # ABCD task image shape: 96, 96, 95
-                # background value = 0
-                # minmax scaled in brain (0~1)
-                y = torch.nn.functional.pad(y, (0, 1, 0, 0, 0, 0), value=background_value) # adjust this padding level according to your data
-            y = y.permute(0,2,3,4,1)
+            y = pad_to_96(y)
 
             return {
                 "fmri_sequence": y,
@@ -243,14 +221,16 @@ class Cobre(BaseDataset):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        # import ipdb; ipdb.set_trace()
         # index = 0
         # _, subject_name, subject_path, start_frame, sequence_length, num_frames, target, sex = self.data[index]
         # y = self.load_sequence(subject_path, start_frame, sequence_length, num_frames)
         # background_value = y.flatten()[0]
         # y = y.permute(0,4,1,2,3)
         # if self.input_type == 'rest':
-        #     y = torch.nn.functional.pad(y, (14, 14, 0, 0, 7, 7), value=background_value)[:,:,:,:,:]
+        #     pad_1 = 96 - y.shape[-1]
+        #     pad_2 = 96 - y.shape[-2]
+        #     pad_3 = 96 - y.shape[-3]
+        #     y = torch.nn.functional.pad(y, (math.ceil(pad_1/2), math.floor(pad_1/2), math.ceil(pad_2/2), math.floor(pad_2/2), math.ceil(pad_3/2), math.floor(pad_3/2)), value=background_value)[:,:,:,:,:]
         # y = y.permute(0,2,3,4,1)
 
 
@@ -279,17 +259,10 @@ class Cobre(BaseDataset):
         #contrastive learning
         if self.contrastive or self.mae:
             y, rand_y = self.load_sequence(subject_path, start_frame, sequence_length)
-
-            background_value = y.flatten()[0]
-            y = y.permute(0,4,1,2,3)
-            y = torch.nn.functional.pad(y, (14, 14, 0, 0, 7, 7), value=background_value)[:,:,:,:,:]
-            y = y.permute(0,2,3,4,1)
+            y = pad_to_96(y)
 
             if self.contrastive:
-                background_value = rand_y.flatten()[0]
-                rand_y = rand_y.permute(0,4,1,2,3)
-                rand_y = torch.nn.functional.pad(y, (14, 14, 0, 0, 7, 7), value=background_value)[:,:,:,:,:]
-                rand_y = rand_y.permute(0,2,3,4,1)
+                rand_y = pad_to_96(rand_y)
 
             return {
                 "fmri_sequence": (y, rand_y),
@@ -302,12 +275,7 @@ class Cobre(BaseDataset):
         # resting or task
         else:   
             y = self.load_sequence(subject_path, start_frame, sequence_length, num_frames)
-
-            background_value = y.flatten()[0]
-            y = y.permute(0,4,1,2,3)
-            if self.input_type == 'rest':
-                y = torch.nn.functional.pad(y, (14, 14, 0, 0, 7, 7), value=background_value)[:,:,:,:,:]
-            y = y.permute(0,2,3,4,1)
+            y = pad_to_96(y)
 
             return {
                 "fmri_sequence": y,
@@ -358,17 +326,10 @@ class ADHD200(BaseDataset):
         #contrastive learning
         if self.contrastive or self.mae:
             y, rand_y = self.load_sequence(subject_path, start_frame, sequence_length)
-
-            background_value = y.flatten()[0]
-            y = y.permute(0,4,1,2,3)
-            y = torch.nn.functional.pad(y, (14, 13, 0, 0, 9, 8), value=background_value)[:,:,:,:,:]
-            y = y.permute(0,2,3,4,1)
+            y = pad_to_96(y)
 
             if self.contrastive:
-                background_value = rand_y.flatten()[0]
-                rand_y = rand_y.permute(0,4,1,2,3)
-                rand_y = torch.nn.functional.pad(y, (14, 13, 0, 0, 9, 8), value=background_value)[:,:,:,:,:]
-                rand_y = rand_y.permute(0,2,3,4,1)
+                rand_y = pad_to_96(rand_y)
 
             return {
                 "fmri_sequence": (y, rand_y),
@@ -381,12 +342,7 @@ class ADHD200(BaseDataset):
         # resting or task
         else:   
             y = self.load_sequence(subject_path, start_frame, sequence_length, num_frames)
-
-            background_value = y.flatten()[0]
-            y = y.permute(0,4,1,2,3)
-            if self.input_type == 'rest':
-                y = torch.nn.functional.pad(y, (14, 13, 0, 0, 9, 8), value=background_value)[:,:,:,:,:]
-            y = y.permute(0,2,3,4,1)
+            y = pad_to_96(y)
 
             return {
                 "fmri_sequence": y,
@@ -428,16 +384,8 @@ class UKB(BaseDataset):
         _, subject_name, subject_path, start_frame, sequence_length, num_frames, target, sex = self.data[index]
         if self.contrastive or self.mae:
                 y, rand_y = self.load_sequence(subject_path, start_frame, sequence_length)
-
-                background_value = y.flatten()[0]
-                y = y.permute(0,4,1,2,3)
-                y = torch.nn.functional.pad(y, (3, 2, -7, -6, 3, 2), value=background_value) # adjust this padding level according to your data
-                y = y.permute(0,2,3,4,1)
-
-                background_value = rand_y.flatten()[0]
-                rand_y = rand_y.permute(0,4,1,2,3)
-                rand_y = torch.nn.functional.pad(rand_y, (3, 2, -7, -6, 3, 2), value=background_value) # adjust this padding level according to your data
-                rand_y = rand_y.permute(0,2,3,4,1)
+                y = pad_to_96(y)
+                rand_y = pad_to_96(rand_y)
 
                 return {
                     "fmri_sequence": (y, rand_y),
@@ -448,11 +396,8 @@ class UKB(BaseDataset):
                 }
         else:
             y = self.load_sequence(subject_path, start_frame, sequence_length, num_frames)
-
-            background_value = y.flatten()[0]
-            y = y.permute(0,4,1,2,3)
-            y = torch.nn.functional.pad(y, (3, 2, -7, -6, 3, 2), value=background_value) # adjust this padding level according to your data
-            y = y.permute(0,2,3,4,1)
+            y = pad_to_96(y)
+            
             return {
                 "fmri_sequence": y,
                 "subject_name": subject_name,

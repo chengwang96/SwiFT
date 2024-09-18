@@ -424,7 +424,6 @@ class LitClassifier(pl.LightningModule):
         if self.hparams.pretraining:
             self._calculate_loss(batch, mode="test")
         else:
-            import ipdb; ipdb.set_trace()
             subj, logits, target = self._compute_logits(batch)
             output = [logits.squeeze().detach().cpu(), target.squeeze().detach().cpu()]
 
