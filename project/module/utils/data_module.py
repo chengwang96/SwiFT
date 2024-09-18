@@ -9,6 +9,31 @@ from .parser import str2bool
 
 from sklearn.model_selection import StratifiedShuffleSplit
 from sklearn.preprocessing import LabelEncoder
+from collections import defaultdict
+import random
+
+
+def select_elements(S, n):
+    level_count = defaultdict(int)
+    for value in S.values():
+        level_count[value[1]] += 1
+
+    total_elements = sum(level_count.values())
+    level_quota = {level: int(n * count / total_elements) for level, count in level_count.items()}
+
+    remaining = n - sum(level_quota.values())
+    levels = sorted(level_count.keys(), key=lambda x: -level_count[x])
+    for i in range(remaining):
+        level_quota[levels[i % len(levels)]] += 1
+
+    selected_elements = []
+    for level in level_quota:
+        elements_of_level = [k for k, v in S.items() if v[1] == level]
+        selected_elements.extend(random.sample(elements_of_level, level_quota[level]))
+
+    S_prime = {k: S[k] for k in selected_elements}
+
+    return S_prime
 
 
 class fMRIDataModule(pl.LightningDataModule):
@@ -63,17 +88,30 @@ class fMRIDataModule(pl.LightningDataModule):
                     
     def determine_split_randomly(self, S):
         np.random.seed(0)
-        S = list(S.keys())
-        S_train = int(len(S) * self.hparams.train_split)
-        S_val = int(len(S) * self.hparams.val_split)
-        S_train = np.random.choice(S, S_train, replace=False)
-        remaining = np.setdiff1d(S, S_train) # np.setdiff1d(np.arange(S), S_train)
-        S_val = np.random.choice(remaining, S_val, replace=False)
-        S_test = np.setdiff1d(S, np.concatenate([S_train, S_val])) # np.setdiff1d(np.arange(S), np.concatenate([S_train, S_val]))
-        # train_idx, val_idx, test_idx = self.convert_subject_list_to_idx_list(S_train, S_val, S_test, self.subject_list)
-        self.save_split({"train_subjects": S_train, "val_subjects": S_val, "test_subjects": S_test})
+        S_keys = list(S.keys())
+        S_train = int(len(S_keys) * self.hparams.train_split)
+        S_val = int(len(S_keys) * self.hparams.val_split)
+        
+        if self.hparams.downstream_task_type == 'classification':
+            S_train = select_elements(S, S_train)
+            S_remaining = {k: v for k, v in S.items() if k not in S_train}
+            S_train_keys = list(S_train.keys())
+        else:
+            S_train_keys = np.random.choice(S_keys, S_train, replace=False)
+        
+        remaining_keys = np.setdiff1d(S_keys, S_train_keys)
 
-        return S_train, S_val, S_test
+        if self.hparams.downstream_task_type == 'classification':
+            S_val = select_elements(S_remaining, S_val)
+            S_val_keys = list(S_val.keys())
+            S_test = {k: v for k, v in S.items() if k not in S_train}
+            S_test_keys = list(S_test.keys())
+        else:
+            S_val_keys = np.random.choice(remaining_keys, S_val, replace=False)
+            S_test_keys = np.setdiff1d(S, np.concatenate([S_train, S_val]))
+        self.save_split({"train_subjects": S_train_keys, "val_subjects": S_val_keys, "test_subjects": S_test_keys})
+
+        return S_train_keys, S_val_keys, S_test_keys
     
     def load_split(self):
         subject_order = open(self.split_file_path, "r").readlines()
