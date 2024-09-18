@@ -10,7 +10,7 @@ import scipy
 
 import torchmetrics
 import torchmetrics.classification
-from torchmetrics.classification import BinaryAccuracy, BinaryAUROC, BinaryROC
+from torchmetrics.classification import BinaryAccuracy, BinaryAUROC, MulticlassAccuracy, MulticlassAUROC
 from torchmetrics import  PearsonCorrCoef # Accuracy,
 from sklearn.metrics import accuracy_score, balanced_accuracy_score, roc_curve
 import monai.transforms as monai_t
@@ -215,11 +215,15 @@ class LitClassifier(pl.LightningModule):
             subj, logits, target = self._compute_logits(batch, augment_during_training = self.hparams.augment_during_training)
 
             if self.hparams.downstream_task == 'sex' or self.hparams.downstream_task_type == 'classification' or self.hparams.scalability_check:
-                loss = F.binary_cross_entropy_with_logits(logits, target) # target is float
-                acc = self.metric.get_accuracy_binary(logits, target.float().squeeze())
+                if self.hparams.num_classes == 2:
+                    loss = F.binary_cross_entropy_with_logits(logits, target)
+                    acc = self.metric.get_accuracy_binary(logits, target.float().squeeze())
+                elif self.hparams.num_classes > 2:
+                    loss = F.cross_entropy(logits, target.long().squeeze())
+                    acc = self.metric.get_accuracy(logits, target.float().squeeze())
                 result_dict = {
-                f"{mode}_loss": loss,
-                f"{mode}_acc": acc,
+                    f"{mode}_loss": loss,
+                    f"{mode}_acc": acc,
                 }
 
             elif self.hparams.downstream_task == 'age' or self.hparams.downstream_task == 'int_total' or self.hparams.downstream_task == 'int_fluid' or self.hparams.downstream_task_type == 'regression':
@@ -235,22 +239,27 @@ class LitClassifier(pl.LightningModule):
         
         return loss
 
-    def _evaluate_metrics(self, subj_array, total_out, mode):
-        # print('total_out.device',total_out.device)
-        # (total iteration/world_size) numbers of samples are passed into _evaluate_metrics.
+    def _evaluate_metrics(self, subj_array, total_out_logits, total_out_target, mode):
         subjects = np.unique(subj_array)
         
         subj_avg_logits = []
         subj_targets = []
-        for subj in subjects:
-            #print('total_out.shape:',total_out.shape) # total_out.shape: torch.Size([16, 2])
-            subj_logits = total_out[subj_array == subj,0] 
-            subj_avg_logits.append(torch.mean(subj_logits).item())
-            subj_targets.append(total_out[subj_array == subj,1][0].item())
-        subj_avg_logits = torch.tensor(subj_avg_logits, device = total_out.device) 
-        subj_targets = torch.tensor(subj_targets, device = total_out.device) 
+
+        if self.hparams.num_classes == 2:
+            for subj in subjects:
+                subj_logits = total_out_logits[subj_array == subj]
+                subj_avg_logits.append(torch.mean(subj_logits).item())
+                subj_targets.append(total_out_target[subj_array == subj][0].item())
+            subj_avg_logits = torch.tensor(subj_avg_logits, device = total_out_logits.device) 
+            subj_targets = torch.tensor(subj_targets, device = total_out_target.device) 
+        elif self.hparams.num_classes > 2:
+            for subj in subjects:
+                subj_logits = total_out_logits[subj_array == subj]
+                subj_avg_logits.append(torch.mean(subj_logits, dim=0))
+                subj_targets.append(total_out_target[subj_array == subj][0].item())
+            subj_avg_logits = torch.stack(subj_avg_logits) 
+            subj_targets = torch.tensor(subj_targets, device = total_out_target.device) 
         
-    
         if self.hparams.downstream_task == 'sex' or self.hparams.downstream_task_type == 'classification' or self.hparams.scalability_check:
             if self.hparams.adjust_thresh:
                 # move threshold to maximize balanced accuracy
@@ -266,7 +275,7 @@ class LitClassifier(pl.LightningModule):
                 fpr, tpr, thresholds = roc_curve(subj_targets.cpu(), subj_avg_logits.cpu())
                 idx = np.argmax(tpr - fpr)
                 youden_thresh = thresholds[idx]
-                acc_func = BinaryAccuracy().to(total_out.device)
+                acc_func = BinaryAccuracy().to(total_out_logits.device)
                 self.log(f"{mode}_youden_thresh", youden_thresh, sync_dist=True)
                 self.log(f"{mode}_youden_balacc", balanced_accuracy_score(subj_targets.cpu(), (subj_avg_logits>=youden_thresh).int().cpu()), sync_dist=True)
 
@@ -276,14 +285,21 @@ class LitClassifier(pl.LightningModule):
                     bal_acc = balanced_accuracy_score(subj_targets.cpu(), (subj_avg_logits>=self.threshold).int().cpu())
                     self.log(f"{mode}_balacc_from_valid_thresh", bal_acc, sync_dist=True)
             else:
-                acc_func = BinaryAccuracy().to(total_out.device)
-                
-            auroc_func = BinaryAUROC().to(total_out.device)
-            acc = acc_func((subj_avg_logits >= 0).int(), subj_targets)
-            #print((subj_avg_logits>=0).int().cpu())
-            #print(subj_targets.cpu())
-            bal_acc_sk = balanced_accuracy_score(subj_targets.cpu(), (subj_avg_logits>=0).int().cpu())
-            auroc = auroc_func(torch.sigmoid(subj_avg_logits), subj_targets)
+                if self.hparams.num_classes == 2:
+                    acc_func = BinaryAccuracy().to(total_out_logits.device)
+                elif self.hparams.num_classes > 2:
+                    acc_func = MulticlassAccuracy(num_classes=self.hparams.num_classes).to(total_out_logits.device)
+
+            if self.hparams.num_classes == 2:
+                auroc_func = BinaryAUROC().to(total_out_logits.device)
+                acc = acc_func((subj_avg_logits >= 0).int(), subj_targets)
+                bal_acc_sk = balanced_accuracy_score(subj_targets.cpu(), (subj_avg_logits>=0).int().cpu())
+                auroc = auroc_func(torch.sigmoid(subj_avg_logits), subj_targets)
+            elif self.hparams.num_classes > 2:
+                auroc_func = MulticlassAUROC(num_classes=self.hparams.num_classes).to(total_out_logits.device)
+                acc = acc_func(subj_avg_logits, subj_targets.long())
+                bal_acc_sk = balanced_accuracy_score(subj_targets.cpu(), subj_avg_logits.max(dim=1)[1].int().cpu())
+                auroc = auroc_func(subj_avg_logits, subj_targets.long())
 
             self.log(f"{mode}_acc", acc, sync_dist=True)
             self.log(f"{mode}_balacc", bal_acc_sk, sync_dist=True)
@@ -324,11 +340,12 @@ class LitClassifier(pl.LightningModule):
         else:
             subj, logits, target = self._compute_logits(batch)
             if self.hparams.downstream_task_type == 'multi_task':
-                output = torch.stack([logits[1].squeeze(), target], dim=1) # logits[1] : regression head
+                output = torch.stack([logits[1].squeeze(), target], dim=1)
+                output = output.detach().cpu()
             else:
-                output = torch.stack([logits.squeeze(), target.squeeze()], dim=1)
+                output = [logits.squeeze().detach().cpu(), target.squeeze().detach().cpu()]
             
-            return (subj, output.detach().cpu())
+            return (subj, output)
 
     def validation_epoch_end(self, outputs):
         if not self.hparams.pretraining:
@@ -336,22 +353,26 @@ class LitClassifier(pl.LightningModule):
             outputs_test = outputs[1]
             subj_valid = []
             subj_test = []
-            out_valid_list = []
-            out_test_list = []
+            out_valid_logits_list, out_valid_target_list = [], []
+            out_test_logits_list, out_test_target_list = [], []
             for subj, out in outputs_valid:
                 subj_valid += subj
-                out_valid_list.append(out)
+                out_valid_logits_list.append(out[0])
+                out_valid_target_list.append(out[1])
             for subj, out in outputs_test:
                 subj_test += subj
-                out_test_list.append(out)
+                out_test_logits_list.append(out[0])
+                out_test_target_list.append(out[1])
             subj_valid = np.array(subj_valid)
             subj_test = np.array(subj_test)
-            total_out_valid = torch.cat(out_valid_list, dim=0)
-            total_out_test = torch.cat(out_test_list, dim=0)
+            total_out_valid_logits = torch.cat(out_valid_logits_list, dim=0)
+            total_out_valid_target = torch.cat(out_valid_target_list, dim=0)
+            total_out_test_logits = torch.cat(out_test_logits_list, dim=0)
+            total_out_test_target = torch.cat(out_test_target_list, dim=0)
 
             # evaluate 
-            self._evaluate_metrics(subj_valid, total_out_valid, mode="valid")
-            self._evaluate_metrics(subj_test, total_out_test, mode="test")
+            self._evaluate_metrics(subj_valid, total_out_valid_logits, total_out_valid_target, mode="valid")
+            self._evaluate_metrics(subj_test, total_out_test_logits, total_out_test_target, mode="test")
             
     # If you use loggers other than Neptune you may need to modify this
     def _save_predictions(self,total_subjs,total_out, mode):
@@ -404,21 +425,22 @@ class LitClassifier(pl.LightningModule):
             self._calculate_loss(batch, mode="test")
         else:
             subj, logits, target = self._compute_logits(batch)
-            output = torch.stack([logits.squeeze(), target.squeeze()], dim=1)
-            
+            output = [logits.squeeze().detach().cpu(), target.squeeze().detach().cpu()]
+
             return (subj, output)
 
     def test_epoch_end(self, outputs):
         if not self.hparams.pretraining:
-            subj_test = [] 
-            out_test_list = []
+            subj_test = []
+            out_test_logits_list, out_test_target_list = [], []
             for subj, out in outputs:
                 subj_test += subj
-                out_test_list.append(out.detach())
+                out_test_logits_list.append(out[0])
+                out_test_target_list.append(out[1])
             subj_test = np.array(subj_test)
-            total_out_test = torch.cat(out_test_list, dim=0)
-            # self._save_predictions(subj_test, total_out_test, mode="test") 
-            self._evaluate_metrics(subj_test, total_out_test, mode="test")
+            total_out_test_logits = torch.cat(out_test_logits_list, dim=0)
+            total_out_test_target = torch.cat(out_test_target_list, dim=0)
+            self._evaluate_metrics(subj_test, total_out_test_logits, total_out_test_target, mode="test")
     
     def on_train_epoch_start(self) -> None:
         self.starter, self.ender = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
@@ -532,6 +554,7 @@ class LitClassifier(pl.LightningModule):
         # model related
         group.add_argument("--model", type=str, default="none", help="which model to be used")
         group.add_argument("--in_chans", type=int, default=1, help="Channel size of input image")
+        group.add_argument("--num_classes", type=int, default=2)
         group.add_argument("--embed_dim", type=int, default=24, help="embedding size (recommend to use 24, 36, 48)")
         group.add_argument("--window_size", nargs="+", default=[4, 4, 4, 4], type=int, help="window size from the second layers")
         group.add_argument("--first_window_size", nargs="+", default=[2, 2, 2, 2], type=int, help="first window size")

@@ -1,8 +1,8 @@
 TRAINER_ARGS='--accelerator gpu --max_epochs 30 --precision 32 --num_nodes 1 --devices 8 --strategy DDP'
-MAIN_ARGS='--loggername tensorboard --classifier_module v6 --dataset_name S1200 --image_path ./data/HCP1200_MNI_to_TRs_minmax'
-DATA_ARGS='--batch_size 8 --num_workers 8 --input_type rest --project_name abcd2hcp_ft_mae_mamba_ratio0.5'
-OPTIONAL_ARGS='--c_multiplier 2 --last_layer_full_MSA True --downstream_task int_total'
-RESUME_ARGS='--load_model_path ./output/abcd_mae_mamba_ratio0.5/checkpt-epoch=29-valid_loss=0.38.ckpt'
+MAIN_ARGS='--loggername tensorboard --classifier_module v6 --dataset_name Cobre --image_path ./data/fmri/cobre_MNI_to_TRs_minmax'
+DATA_ARGS='--batch_size 8 --num_workers 8 --input_type rest --project_name cobre_dx_mamba'
+OPTIONAL_ARGS='--c_multiplier 2 --last_layer_full_MSA True --downstream_task dx --downstream_task_type classification'
+RESUME_ARGS='--num_classes 4'
 
 export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 export NCCL_P2P_DISABLE=1

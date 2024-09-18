@@ -3,7 +3,7 @@ import pytorch_lightning as pl
 import numpy as np
 import pandas as pd
 from torch.utils.data import DataLoader, Subset
-from .data_preprocess_and_load.datasets import S1200, ABCD, UKB, Dummy
+from .data_preprocess_and_load.datasets import S1200, ABCD, UKB, Dummy, Cobre
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from .parser import str2bool
 
@@ -35,6 +35,8 @@ class fMRIDataModule(pl.LightningDataModule):
             return ABCD
         elif self.hparams.dataset_name == 'UKB':
             return UKB
+        elif self.hparams.dataset_name == 'Cobre':
+            return Cobre
         else:
             raise NotImplementedError
 
@@ -92,6 +94,7 @@ class fMRIDataModule(pl.LightningDataModule):
         # output: {'subj1':[target1,target2],'subj2':[target1,target2]...}
         img_root = os.path.join(self.hparams.image_path, 'img')
         final_dict = dict()
+
         if self.hparams.dataset_name == "S1200":
             subject_list = os.listdir(img_root)
             meta_data = pd.read_csv(os.path.join(self.hparams.image_path, "metadata", "HCP_1200_gender.csv"))
@@ -100,7 +103,7 @@ class fMRIDataModule(pl.LightningDataModule):
             if self.hparams.downstream_task == 'sex': task_name = 'Gender'
             elif self.hparams.downstream_task == 'age': task_name = 'age'
             # CogTotalComp_AgeAdj CogTotalComp_Unadj Strength_AgeAdj Strength_Unadj ReadEng_AgeAdj ReadEng_Unadj 
-            elif self.hparams.downstream_task == 'int_total': task_name = 'CogTotalComp_AgeAdj'
+            elif self.hparams.downstream_task == 'int_total': task_name = 'Strength_AgeAdj'
             else: raise NotImplementedError()
 
             print('task_name = {}'.format(task_name))
@@ -151,6 +154,37 @@ class fMRIDataModule(pl.LightningDataModule):
                         target = 1 if target == "M" else 0
                     sex = meta_task[meta_task["subjectkey"]==subject]["sex"].values[0]
                     sex = 1 if sex == "M" else 0
+                    final_dict[subject]=[sex, target]
+        
+        elif self.hparams.dataset_name == "Cobre":
+            subject_list = [subj for subj in os.listdir(img_root)]
+            
+            meta_data = pd.read_csv(os.path.join(self.hparams.image_path, "metadata", "cobre-rest.csv"))
+            if self.hparams.downstream_task == 'sex': task_name = 'sex'
+            elif self.hparams.downstream_task == 'age': task_name = 'age'
+            elif self.hparams.downstream_task == 'dx': task_name = 'dx'
+            else: raise ValueError('downstream task not supported')
+           
+            if self.hparams.downstream_task == 'sex':
+                meta_task = meta_data[['subject_id', task_name]].dropna()
+            else:
+                meta_task = meta_data[['subject_id', task_name, 'sex']].dropna()
+            
+            for subject in subject_list:
+                if subject in meta_task['subject_id'].values:
+                    target = meta_task[meta_task["subject_id"]==subject][task_name].values[0]
+                    if task_name == 'sex':
+                        target = 1 if target == "M" else 0
+                    elif task_name == 'dx':
+                        if target == 'Schizophrenia_Strict': target = 0
+                        elif target == 'Schizoaffective': target = 1
+                        elif target == 'No_Known_Disorder': target = 2
+                        elif target == 'Bipolar_Disorder': target = 3
+                        else: 
+                            import ipdb; ipdb.set_trace()
+                        
+                    sex = meta_task[meta_task["subject_id"]==subject]["sex"].values[0]
+                    sex = 1 if sex == "male" else 0
                     final_dict[subject]=[sex, target]
             
         elif self.hparams.dataset_name == "UKB":
