@@ -3,7 +3,7 @@ import pytorch_lightning as pl
 import numpy as np
 import pandas as pd
 from torch.utils.data import DataLoader, Subset
-from .data_preprocess_and_load.datasets import S1200, ABCD, UKB, Dummy, Cobre, ADHD200, UCLA, HCPEP
+from .data_preprocess_and_load.datasets import S1200, ABCD, UKB, Dummy, Cobre, ADHD200, UCLA, HCPEP, GOD
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from .parser import str2bool
 
@@ -68,6 +68,8 @@ class fMRIDataModule(pl.LightningDataModule):
             return UCLA
         elif self.hparams.dataset_name == 'HCPEP':
             return HCPEP
+        elif self.hparams.dataset_name == 'GOD':
+            return GOD 
         else:
             raise NotImplementedError
 
@@ -328,7 +330,30 @@ class fMRIDataModule(pl.LightningDataModule):
                     sex = 1 if sex == "M" else 0
                     final_dict[subject]=[sex, target]
             
-            print('Load dataset UCLA, {} subjects'.format(len(final_dict)))
+            print('Load dataset HCPEP, {} subjects'.format(len(final_dict)))
+        
+        elif self.hparams.dataset_name == "GOD":
+            subject_list = [subj for subj in os.listdir(img_root)]
+            
+            meta_data = pd.read_csv(os.path.join(self.hparams.image_path, "metadata", "god_label.csv"))
+            if self.hparams.downstream_task == 'classification': task_name = 'class'
+            else: raise ValueError('downstream task not supported')
+           
+            meta_task = meta_data[['subject_id', task_name]].dropna()
+            
+            for subject in subject_list:
+                if subject in meta_task['subject_id'].values:
+                    target = meta_task[meta_task["subject_id"]==subject][task_name].values[0]
+                    if task_name == 'sex':
+                        target = 1 if target == "M" else 0
+                    elif task_name == 'class':
+                        if target >= 1000:
+                            import ipdb; ipdb.set_trace()
+                        
+                    sex = 0
+                    final_dict[subject]=[sex, target]
+            
+            print('Load dataset GOD, {} subjects'.format(len(final_dict)))
 
         elif self.hparams.dataset_name == "UKB":
             if self.hparams.downstream_task == 'sex': task_name = 'sex'

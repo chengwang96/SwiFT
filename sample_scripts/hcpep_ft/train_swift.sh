@@ -1,7 +1,7 @@
 TRAINER_ARGS='--accelerator gpu --max_epochs 30 --precision 32 --num_nodes 1 --devices 8 --strategy DDP'
 MAIN_ARGS='--loggername tensorboard --classifier_module v6 --dataset_name HCPEP --image_path ./data/HCPEP_MNI_to_TRs_minmax'
 DATA_ARGS='--batch_size 8 --num_workers 8 --input_type rest --project_name hcpep_dx_swift'
-OPTIONAL_ARGS='--c_multiplier 2 --last_layer_full_MSA True --downstream_task dx --downstream_task_type classification'
+OPTIONAL_ARGS='--c_multiplier 2 --last_layer_full_MSA True --downstream_task diagnosis --downstream_task_type classification'
 RESUME_ARGS='--num_classes 2'
 
 export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
