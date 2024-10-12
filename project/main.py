@@ -148,7 +148,7 @@ def cli_main():
         )
 
     # ------------ model -------------
-    model = Classifier(data_module = data_module, **vars(args)) 
+    model = Classifier(data_module = data_module, **vars(args))
 
     if args.load_model_path is not None:
         print(f'loading model from {args.load_model_path}')

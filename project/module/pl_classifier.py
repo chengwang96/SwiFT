@@ -48,6 +48,19 @@ class LitClassifier(pl.LightningModule):
         print(self.hparams.model)
         self.model = load_model(self.hparams.model, self.hparams)
 
+        from torchsummary import summary
+        from thop import profile
+
+        # input_size = (1, 48, 48, 48, 20)
+        # summary(self.model.cuda(), input_size=input_size)
+        input = torch.randn((1, 1, 48, 48, 48, 20)).cuda()
+        # input = torch.randn((1, 1, 96, 96, 96, 20)).cuda()
+        
+        flops, params = profile(self.model.cuda(), inputs=(input, ))
+        print('FLOPs = ' + str(flops/1000**3) + 'G')
+        print('Params = ' + str(params/1000**2) + 'M')
+        import ipdb; ipdb.set_trace()
+
         # Heads
         if not self.hparams.pretraining:
             if self.hparams.downstream_task == 'sex' or self.hparams.downstream_task_type == 'classification' or self.hparams.scalability_check:
