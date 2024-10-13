@@ -38,16 +38,7 @@ def read_data(filename, load_root, save_root, subj_name, count, queue=None, scal
         os.makedirs(save_dir)
     
     data = select_middle_96(data)
-    mask_path = path[:-19] + 'brain_mask.nii.gz'
-
-    try:
-        background = LoadImage()(mask_path)
-    except:
-        print('mask open failed')
-        return None
-    
-    background = select_middle_96(background) == 1
-    data[background] = 0
+    background = data==0
     
     if scaling_method == 'z-norm':
         global_mean = data[~background].mean()
@@ -65,29 +56,29 @@ def read_data(filename, load_root, save_root, subj_name, count, queue=None, scal
     for i, TR in enumerate(data_global_split):
         torch.save(TR.clone(), os.path.join(save_dir, "frame_"+str(i)+".pt"))
     
-    # os.remove(path)
+    # import ipdb; ipdb.set_trace()
+    os.remove(path)
 
 
 def main():
-    dataset_name = 'ABCD'
-    load_root = './data/ABCD'
-    save_root = f'/data/share_142/cwang/fmri/{dataset_name}_MNI_to_TRs_minmax'
+    load_root = './data/UKB'
+    save_root = './data/UKB_MNI_to_TRs_minmax'
     scaling_method = 'z-norm'
 
     filenames = os.listdir(load_root)
     os.makedirs(os.path.join(save_root, 'img'), exist_ok = True)
-    os.makedirs(os.path.join(save_root, 'metadata'), exist_ok = True)
+    os.makedirs(os.path.join(save_root, 'metadata'), exist_ok = True) # locate your metadata file at this folder 
     save_root = os.path.join(save_root, 'img')
     
     finished_samples = os.listdir(save_root)
     queue = Queue() 
     count = 0
     for filename in sorted(filenames):
-        if not filename.endswith('preproc_bold.nii.gz'):
+        if not filename.endswith('.nii.gz'):
             continue
     
-        subj_name = filename.split('-')[1][:-4]
-        expected_seq_length = 300
+        subj_name = filename.split('.')[0]
+        expected_seq_length = 400
 
         # fill_zeroback = False
         # print("processing: " + filename, flush=True)
@@ -100,16 +91,7 @@ def main():
         
         # import ipdb; ipdb.set_trace()
         # data = select_middle_96(data)
-        
-        # mask_path = path[:-19] + 'brain_mask.nii.gz'
-        # try:
-        #     background = LoadImage()(mask_path)
-        # except:
-        #     print('mask open failed')
-        #     return None
-        
-        # background = select_middle_96(background) == 0
-        # data[background] = 0
+        # background = data==0
         
         # if scaling_method == 'z-norm':
         #     global_mean = data[~background].mean()
@@ -131,15 +113,16 @@ def main():
                 count+=1
                 p = Process(target=read_data, args=(filename, load_root, save_root, subj_name, count, queue, scaling_method))
                 p.start()
-                if count % 64 == 0:
+                if count % 8 == 0:
                     p.join()
             except Exception:
-                print('encountered problem with'+filename)
+                print('encountered problem with ' + filename)
                 print(Exception)
         else:
             path = os.path.join(load_root, filename)
             save_dir = os.path.join(save_root, subj_name)
             print('{} has {} slices, save_dir is {}'.format(subj_name, len(os.listdir(os.path.join(save_root, subj_name))), save_dir))
+            # import ipdb; ipdb.set_trace()
             os.remove(path)
 
 
