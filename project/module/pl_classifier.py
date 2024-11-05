@@ -7,6 +7,7 @@ import numpy as np
 import os
 import pickle
 import scipy
+import time
 
 import torchmetrics
 import torchmetrics.classification
@@ -47,19 +48,17 @@ class LitClassifier(pl.LightningModule):
         self.scaler = scaler
         print(self.hparams.model)
         self.model = load_model(self.hparams.model, self.hparams)
+        self.start_time_data = time.time()
 
-        from torchsummary import summary
-        from thop import profile
+        # from torchsummary import summary
+        # from thop import profile
 
-        # input_size = (1, 48, 48, 48, 20)
-        # summary(self.model.cuda(), input_size=input_size)
-        input = torch.randn((1, 1, 48, 48, 48, 20)).cuda()
-        # input = torch.randn((1, 1, 96, 96, 96, 20)).cuda()
+        # input = torch.randn((1, 1, 48, 48, 48, 20)).cuda()
         
-        flops, params = profile(self.model.cuda(), inputs=(input, ))
-        print('FLOPs = ' + str(flops/1000**3) + 'G')
-        print('Params = ' + str(params/1000**2) + 'M')
-        import ipdb; ipdb.set_trace()
+        # flops, params = profile(self.model.cuda(), inputs=(input, ))
+        # print('FLOPs = ' + str(flops/1000**3) + 'G')
+        # print('Params = ' + str(params/1000**2) + 'M')
+        # import ipdb; ipdb.set_trace()
 
         # Heads
         if not self.hparams.pretraining:
@@ -148,7 +147,9 @@ class LitClassifier(pl.LightningModule):
     
     def _calculate_loss(self, batch, mode):
         if self.hparams.pretraining:
+            start_time_data_read = time.time()
             fmri, subj, target_value, tr, sex = batch.values()
+            end_time_data_read = time.time()
             
             cond1 = (self.hparams.in_chans == 1 and not self.hparams.with_voxel_norm)
             assert cond1, "Wrong combination of options"
@@ -215,17 +216,30 @@ class LitClassifier(pl.LightningModule):
                     augment_y = self.augment(y)
                 else:
                     augment_y = y
+
+                start_time_model = time.time()
                 pred_list, loss = self.model(augment_y)
                 pred = pred_list[0]
                 mask = pred_list[1]
+                end_time_model = time.time()
+
                 if mode == 'valid' and loss.item() > 3:
                     print(y[0, 0, 30, 30, 30])
-
+                
                 result_dict = {
-                    f"{mode}_loss": loss,
+                    f"{mode}_loss": loss
                 }
         else:
+            self.end_time_data = time.time()
+            data_time = self.end_time_data - self.start_time_data
+            # print(f"Data time: {data_time:.6f} seconds")
+
+            start_time_model = time.time()
             subj, logits, target = self._compute_logits(batch, augment_during_training = self.hparams.augment_during_training)
+            end_time_model = time.time()
+            model_time = end_time_model - start_time_model
+            # print(f"Model time: {model_time:.6f} seconds")
+            self.start_time_data = time.time()
 
             if self.hparams.downstream_task == 'sex' or self.hparams.downstream_task_type == 'classification' or self.hparams.scalability_check:
                 if self.hparams.num_classes == 2:
@@ -234,6 +248,7 @@ class LitClassifier(pl.LightningModule):
                 elif self.hparams.num_classes > 2:
                     loss = F.cross_entropy(logits, target.long().squeeze())
                     acc = self.metric.get_accuracy(logits, target.float().squeeze())
+                
                 result_dict = {
                     f"{mode}_loss": loss,
                     f"{mode}_acc": acc,

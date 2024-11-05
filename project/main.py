@@ -23,7 +23,6 @@ def cli_main():
     parser.add_argument("--dataset_name", type=str, choices=["S1200", "ABCD", "UKB", "Dummy", "Cobre", "ADHD200", "HCPA", "HCPD", "UCLA", "HCPEP", "GOD"], default="S1200")
     parser.add_argument("--downstream_task", type=str, default="sex", help="downstream task")
     parser.add_argument("--downstream_task_type", type=str, default="default", help="select either classification or regression according to your downstream task")
-    parser.add_argument("--classifier_module", default="default", type=str, help="A name of lightning classifier module (outdated argument)")
     parser.add_argument("--loggername", default="default", type=str, help="A name of logger")
     parser.add_argument("--project_name", default="default", type=str, help="A name of project (Neptune)")
     parser.add_argument("--resume_ckpt_path", type=str, help="A path to previous checkpoint. Use when you want to continue the training from the previous checkpoints")

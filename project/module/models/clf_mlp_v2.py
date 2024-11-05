@@ -18,4 +18,5 @@ class mlp(nn.Module):
         x = torch.flatten(x, 1)
         x = self.hidden(x)
         x = self.head(x)
+
         return x

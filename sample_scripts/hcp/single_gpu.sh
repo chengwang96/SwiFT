@@ -1,5 +1,5 @@
 TRAINER_ARGS='--accelerator gpu --max_epochs 30 --precision 32 --num_nodes 1 --devices 1'
-MAIN_ARGS='--loggername tensorboard --classifier_module v6 --dataset_name ABCD --image_path ./data/ABCD_MNI_to_TRs_minmax'
+MAIN_ARGS='--loggername tensorboard --clf_head_version v3 --dataset_name ABCD --image_path ./data/ABCD_MNI_to_TRs_minmax'
 DATA_ARGS='--batch_size 8 --num_workers 4 --input_type rest --project_name test'
 OPTIONAL_ARGS='--c_multiplier 2 --last_layer_full_MSA True --downstream_task sex' # --use_scheduler --gamma 0.5 --cycle 0.5'
 RESUME_ARGS='--pretraining --use_mae --spatial_mask window --time_mask random --mask_ratio 0.5'

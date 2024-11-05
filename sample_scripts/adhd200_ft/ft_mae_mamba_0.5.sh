@@ -1,5 +1,5 @@
 TRAINER_ARGS='--accelerator gpu --max_epochs 30 --precision 32 --num_nodes 1 --devices 4 --strategy DDP'
-MAIN_ARGS='--loggername tensorboard --classifier_module v6 --dataset_name ADHD200 --image_path ./data/ADHD200_MNI_to_TRs_minmax'
+MAIN_ARGS='--loggername tensorboard --clf_head_version v3 --dataset_name ADHD200 --image_path ./data/ADHD200_MNI_to_TRs_minmax'
 DATA_ARGS='--batch_size 16 --num_workers 16 --input_type rest --project_name abcd2adhd_ft_dx_0.5train_mae_mamba_ratio0.5 --limit_training_samples 0.5'
 OPTIONAL_ARGS='--c_multiplier 2 --last_layer_full_MSA True --downstream_task diagnosis --downstream_task_type classification'
 RESUME_ARGS='--load_model_path ./output/abcd_mae_mamba_ratio0.5/checkpt-epoch=37-valid_loss=0.37.ckpt --num_classes 2'

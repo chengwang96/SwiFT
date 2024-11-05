@@ -1,5 +1,5 @@
 TRAINER_ARGS='--accelerator gpu --max_epochs 30 --precision 16 --num_nodes 1 --devices 2 --strategy DDP' # specify the number of gpus as '--devices'
-MAIN_ARGS='--loggername tensorboard --classifier_module v6 --dataset_name S1200 --image_path ./data/HCP1200_MNI_to_TRs_minmax'
+MAIN_ARGS='--loggername tensorboard --clf_head_version v3 --dataset_name S1200 --image_path ./data/HCP1200_MNI_to_TRs_minmax'
 DATA_ARGS='--batch_size 4 --num_workers 4 --input_type rest --project_name contrastive_swift'
 # DEFAULT_ARGS='--project_name {neptune project name}'
 OPTIONAL_ARGS='--c_multiplier 2 --last_layer_full_MSA True --clf_head_version v1 --downstream_task int_total' #--use_scheduler --gamma 0.5 --cycle 0.5'

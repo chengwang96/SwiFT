@@ -314,7 +314,7 @@ You should correct the following lines.
 cd {path to your 'SwiFT' directory}
 source /usr/anaconda3/etc/profile.d/conda.sh (init conda) # might change if you have your own conda.
 conda activate {conda env name}
-MAIN_ARGS='--loggername neptune --classifier_module v6 --dataset_name {dataset_name} --image_path {path to the image data}' # This script assumes that you have preprocessed HCP dataset. You may run the codes anyway with "--dataset_name Dummy"
+MAIN_ARGS='--loggername neptune --clf_head_version v3 --dataset_name {dataset_name} --image_path {path to the image data}' # This script assumes that you have preprocessed HCP dataset. You may run the codes anyway with "--dataset_name Dummy"
 DEFAULT_ARGS='--project_name {neptune project name}'
 export NEPTUNE_API_TOKEN="{Neptune API token allocated to each user}"
 export CUDA_VISIBLE_DEVICES={usable GPU number}

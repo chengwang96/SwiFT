@@ -3,7 +3,7 @@ import torch
 import os
 import time
 from multiprocessing import Process, Queue
-
+import argparse
 
 def select_middle_96(vector):
     start_index, end_index = [], []
@@ -22,14 +22,13 @@ def select_middle_96(vector):
     
     return result
 
-
 def read_data(filename, load_root, save_root, subj_name, count, queue=None, scaling_method=None, fill_zeroback=False):
     print("processing: " + filename, flush=True)
     path = os.path.join(load_root, filename)
     try:
         data = LoadImage()(path)
     except:
-        print('open failed')
+        print('{} open failed'.format(path))
         return None
     
     save_dir = os.path.join(save_root, subj_name)
@@ -56,18 +55,22 @@ def read_data(filename, load_root, save_root, subj_name, count, queue=None, scal
     for i, TR in enumerate(data_global_split):
         torch.save(TR.clone(), os.path.join(save_dir, "frame_"+str(i)+".pt"))
     
-    # import ipdb; ipdb.set_trace()
     os.remove(path)
-
+    print('delete {}'.format(path))
 
 def main():
-    load_root = './data/UKB'
-    save_root = './data/UKB_MNI_to_TRs_minmax'
+    parser = argparse.ArgumentParser(description='Process image data.')
+    parser.add_argument('--load_root', type=str, required=True, help='Root directory to load data from')
+    parser.add_argument('--save_root', type=str, required=True, help='Root directory to save data to')
+    args = parser.parse_args()
+
+    load_root = args.load_root
+    save_root = args.save_root
     scaling_method = 'z-norm'
 
     filenames = os.listdir(load_root)
-    os.makedirs(os.path.join(save_root, 'img'), exist_ok = True)
-    os.makedirs(os.path.join(save_root, 'metadata'), exist_ok = True) # locate your metadata file at this folder 
+    os.makedirs(os.path.join(save_root, 'img'), exist_ok=True)
+    os.makedirs(os.path.join(save_root, 'metadata'), exist_ok=True)
     save_root = os.path.join(save_root, 'img')
     
     finished_samples = os.listdir(save_root)
@@ -80,54 +83,23 @@ def main():
         subj_name = filename.split('.')[0]
         expected_seq_length = 400
 
-        # fill_zeroback = False
-        # print("processing: " + filename, flush=True)
-        # path = os.path.join(load_root, filename)
-        # try:
-        #     data = LoadImage()(path)
-        # except:
-        #     print('open failed')
-        #     return None
-        
-        # import ipdb; ipdb.set_trace()
-        # data = select_middle_96(data)
-        # background = data==0
-        
-        # if scaling_method == 'z-norm':
-        #     global_mean = data[~background].mean()
-        #     global_std = data[~background].std()
-        #     data_temp = (data - global_mean) / global_std
-        # elif scaling_method == 'minmax':
-        #     data_temp = (data - data[~background].min()) / (data[~background].max() - data[~background].min())
-
-        # data_global = torch.empty(data.shape)
-        # data_global[background] = data_temp[~background].min() if not fill_zeroback else 0
-        # data_global[~background] = data_temp[~background]
-
-        # data_global = data_global.type(torch.float16)
-        # data_global_split = torch.split(data_global, 1, 3)
-        # import ipdb; ipdb.set_trace()
-
         if (subj_name not in finished_samples) or (len(os.listdir(os.path.join(save_root, subj_name))) < expected_seq_length):
             try:
-                count+=1
+                count += 1
                 p = Process(target=read_data, args=(filename, load_root, save_root, subj_name, count, queue, scaling_method))
                 p.start()
-                if count % 8 == 0:
+                if count % 32 == 0:
                     p.join()
-            except Exception:
-                print('encountered problem with ' + filename)
-                print(Exception)
+            except Exception as e:
+                print(f'encountered problem with {filename}: {e}')
         else:
             path = os.path.join(load_root, filename)
             save_dir = os.path.join(save_root, subj_name)
-            print('{} has {} slices, save_dir is {}'.format(subj_name, len(os.listdir(os.path.join(save_root, subj_name))), save_dir))
-            # import ipdb; ipdb.set_trace()
+            print(f'{subj_name} has {len(os.listdir(os.path.join(save_root, subj_name)))} slices, save_dir is {save_dir}')
             os.remove(path)
-
 
 if __name__=='__main__':
     start_time = time.time()
     main()
     end_time = time.time()
-    print('\nTotal', round((end_time - start_time) / 60), 'minutes elapsed.')    
+    print('\nTotal', round((end_time - start_time) / 60), 'minutes elapsed.')

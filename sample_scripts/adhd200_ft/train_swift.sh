@@ -1,5 +1,5 @@
 TRAINER_ARGS='--accelerator gpu --max_epochs 30 --precision 32 --num_nodes 1 --devices 8 --strategy DDP'
-MAIN_ARGS='--loggername tensorboard --classifier_module v6 --dataset_name ADHD200 --image_path ./data/fmri/ADHD200_MNI_to_TRs_minmax'
+MAIN_ARGS='--loggername tensorboard --clf_head_version v3 --dataset_name ADHD200 --image_path ./data/fmri/ADHD200_MNI_to_TRs_minmax'
 DATA_ARGS='--batch_size 8 --num_workers 8 --input_type rest --project_name adhd_dx_swift'
 OPTIONAL_ARGS='--c_multiplier 2 --last_layer_full_MSA True --downstream_task diagnosis --downstream_task_type classification'
 RESUME_ARGS='--num_classes 4'

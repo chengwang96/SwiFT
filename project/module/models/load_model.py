@@ -61,6 +61,9 @@ def load_model(model_name, hparams=None):
         elif hparams.clf_head_version == 'v2':
             from .clf_mlp_v2 import mlp
             net = mlp(num_classes=hparams.num_classes, num_tokens = hparams.embed_dim * (hparams.c_multiplier ** (n_stages - 1)))
+        elif hparams.clf_head_version == 'v3':
+            from .clf_mlp_v3 import ViTClassifier
+            net = ViTClassifier(num_classes=hparams.num_classes, emb_size = hparams.embed_dim * (hparams.c_multiplier ** (n_stages - 1)))
         else:
             raise NotImplementedError
         # x -> (b, 96, 4, 4, 4, t)

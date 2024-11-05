@@ -110,11 +110,11 @@ class fMRIDataModule(pl.LightningDataModule):
         if self.hparams.downstream_task_type == 'classification':
             S_val = select_elements(S_remaining, S_val)
             S_val_keys = list(S_val.keys())
-            S_test = {k: v for k, v in S.items() if k not in S_train}
+            S_test = {k: v for k, v in S_remaining.items() if k not in S_val}
             S_test_keys = list(S_test.keys())
         else:
             S_val_keys = np.random.choice(remaining_keys, S_val, replace=False)
-            S_test_keys = np.setdiff1d(S, np.concatenate([S_train, S_val]))
+            S_test_keys = np.setdiff1d(S_keys, np.concatenate([S_train_keys, S_val_keys]))
         self.save_split({"train_subjects": S_train_keys, "val_subjects": S_val_keys, "test_subjects": S_test_keys})
 
         return S_train_keys, S_val_keys, S_test_keys
@@ -161,7 +161,7 @@ class fMRIDataModule(pl.LightningDataModule):
                 #rename column subject to Subject
                 meta_task = meta_task.rename(columns={'subject': 'Subject'})
             elif self.hparams.downstream_task == 'int_total':
-                meta_task = meta_data[['Subject',task_name,'Gender']].dropna()  
+                meta_task = meta_data[['Subject', task_name, 'Gender']].dropna()  
             
             for subject in subject_list:
                 if int(subject) in meta_task['Subject'].values:
@@ -177,7 +177,7 @@ class fMRIDataModule(pl.LightningDataModule):
                         target = meta_task[meta_task["Subject"]==int(subject)][task_name].values[0]
                         sex = meta_task[meta_task["Subject"]==int(subject)]["Gender"].values[0]
                         sex = 1 if sex == "M" else 0
-                    final_dict[subject]=[sex,target]
+                    final_dict[subject]=[sex, target]
             
             print('Load dataset HCP1200, {} subjects'.format(len(final_dict)))
             
@@ -347,33 +347,50 @@ class fMRIDataModule(pl.LightningDataModule):
                     if task_name == 'sex':
                         target = 1 if target == "M" else 0
                     elif task_name == 'class':
-                        if target >= 1000:
+                        target = target - 1
+                        if target >= 150:
                             import ipdb; ipdb.set_trace()
                         
                     sex = 0
                     final_dict[subject]=[sex, target]
-            
-            print('Load dataset GOD, {} subjects'.format(len(final_dict)))
+
+            category_count = defaultdict(int)
+            for subject_id, (gender, category) in final_dict.items():
+                category_count[category] += 1
+
+            categories_to_delete = {category for category, count in category_count.items() if count < 40}
+            final_dict = {subject_id: [gender, category] for subject_id, (gender, category) in final_dict.items() if category not in categories_to_delete}
+
+            unique_categories = sorted(set(category for gender, category in final_dict.values()))
+            category_mapping = {old_category: new_category for new_category, old_category in enumerate(unique_categories)}
+
+            for subject_id in final_dict:
+                final_dict[subject_id][1] = category_mapping[final_dict[subject_id][1]]
+
+            print('Load dataset GOD, {} subjects, {} classes'.format(len(final_dict), len(unique_categories)))
 
         elif self.hparams.dataset_name == "UKB":
+            subject_list = [subj for subj in os.listdir(img_root)]
+
+            meta_data = pd.read_csv(os.path.join(self.hparams.image_path, "metadata", "ukb-rest.csv"))
             if self.hparams.downstream_task == 'sex': task_name = 'sex'
             elif self.hparams.downstream_task == 'age': task_name = 'age'
-            elif self.hparams.downstream_task == 'int_fluid' : task_name = 'fluid'
             else: raise ValueError('downstream task not supported')
-                
-            meta_data = pd.read_csv(os.path.join(self.hparams.image_path, "metadata", "UKB_phenotype_gps_fluidint.csv"))
-            if task_name == 'sex':
-                meta_task = meta_data[['eid',task_name]].dropna()
+           
+            if self.hparams.downstream_task == 'sex':
+                meta_task = meta_data[['subject_id', task_name]].dropna()
             else:
-                meta_task = meta_data[['eid',task_name,'sex']].dropna()
-
-            for subject in os.listdir(img_root):
-                if subject.endswith('20227_2_0') and (int(subject[:7]) in meta_task['eid'].values):
-                    target = meta_task[meta_task["eid"]==int(subject[:7])][task_name].values[0]
-                    sex = meta_task[meta_task["eid"]==int(subject[:7])].values[0]
-                    final_dict[str(subject[:7])] = [sex,target]
-                else:
-                    continue 
+                meta_task = meta_data[['subject_id', task_name, 'sex']].dropna()
+            
+            for subject in subject_list:
+                if int(subject) in meta_task['subject_id'].values:
+                    target = meta_task[meta_task["subject_id"]==int(subject)][task_name].values[0]
+                    if task_name == 'sex':
+                        target = int(target)
+                        
+                    sex = meta_task[meta_task["subject_id"]==int(subject)]["sex"].values[0]
+                    sex = int(sex)
+                    final_dict[subject]=[sex, target]
             
             print('Load dataset UKB, {} subjects'.format(len(final_dict)))
         
