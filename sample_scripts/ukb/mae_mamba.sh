@@ -1,8 +1,9 @@
 TRAINER_ARGS='--accelerator gpu --max_epochs 40 --precision 32 --num_nodes 1 --devices 2 --strategy DDP'
 MAIN_ARGS='--loggername tensorboard --clf_head_version v1 --dataset_name UKB --image_path ./data/UKB_MNI_to_TRs_minmax'
-DATA_ARGS='--batch_size 16 --num_workers 16 --input_type rest --project_name ukb_mae_mamba_ratio0.5'
+DATA_ARGS='--batch_size 2 --num_workers 2 --input_type rest --project_name ukb_mae_mamba_ratio0.5'
 OPTIONAL_ARGS='--c_multiplier 2 --last_layer_full_MSA True --downstream_task sex'
 RESUME_ARGS='--pretraining --use_mae --spatial_mask window --time_mask random --mask_ratio 0.5'
+# --resume_ckpt_path ./output/ukb_mae_mamba_ratio0.5/checkpt-epoch=00-valid_loss=0.05.ckpt
 
 export CUDA_VISIBLE_DEVICES=2,3
 export NCCL_P2P_DISABLE=1

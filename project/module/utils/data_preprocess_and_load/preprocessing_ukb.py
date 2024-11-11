@@ -22,6 +22,7 @@ def select_middle_96(vector):
     
     return result
 
+
 def read_data(filename, load_root, save_root, subj_name, count, queue=None, scaling_method=None, fill_zeroback=False):
     print("processing: " + filename, flush=True)
     path = os.path.join(load_root, filename)
@@ -58,6 +59,7 @@ def read_data(filename, load_root, save_root, subj_name, count, queue=None, scal
     os.remove(path)
     print('delete {}'.format(path))
 
+
 def main():
     parser = argparse.ArgumentParser(description='Process image data.')
     parser.add_argument('--load_root', type=str, required=True, help='Root directory to load data from')
@@ -81,7 +83,7 @@ def main():
             continue
     
         subj_name = filename.split('.')[0]
-        expected_seq_length = 400
+        expected_seq_length = 1200
 
         if (subj_name not in finished_samples) or (len(os.listdir(os.path.join(save_root, subj_name))) < expected_seq_length):
             try:

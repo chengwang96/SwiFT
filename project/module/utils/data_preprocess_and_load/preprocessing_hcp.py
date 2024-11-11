@@ -4,6 +4,23 @@ import os
 import time
 from multiprocessing import Process, Queue
 
+def select_middle_96(vector):
+    start_index, end_index = [], []
+    for i in range(3):
+        if vector.shape[i] > 96:
+            start_index.append((vector.shape[i] - 96) // 2)
+            end_index.append(start_index[-1] + 96)
+        else:
+            start_index.append(0)
+            end_index.append(-1)
+
+    if len(vector.shape) == 3:
+        result = vector[start_index[0]:end_index[0], start_index[1]:end_index[1], start_index[2]:end_index[2]]
+    elif len(vector.shape) == 4:
+        result = vector[start_index[0]:end_index[0], start_index[1]:end_index[1], start_index[2]:end_index[2], :]
+    
+    return result
+
 def read_data(filename,load_root,save_root,subj_name,count,queue=None,scaling_method=None, fill_zeroback=False):
     print("processing: " + filename, flush=True)
     path = os.path.join(load_root, filename)
@@ -20,9 +37,7 @@ def read_data(filename,load_root,save_root,subj_name,count,queue=None,scaling_me
     if not isExist:
         os.makedirs(save_dir)
     
-    # change this line according to your dataset
-    data = data[:, 14:-7, :, :]
-
+    data = select_middle_96(data)
     background = data==0
     
     if scaling_method == 'z-norm':
@@ -34,7 +49,6 @@ def read_data(filename,load_root,save_root,subj_name,count,queue=None,scaling_me
 
     data_global = torch.empty(data.shape)
     data_global[background] = data_temp[~background].min() if not fill_zeroback else 0 
-    # data_temp[~background].min() is expected to be 0 for scaling_method == 'minmax', and minimum z-value for scaling_method == 'z-norm'
     data_global[~background] = data_temp[~background]
 
     # save volumes one-by-one in fp16 format.
@@ -47,13 +61,15 @@ def read_data(filename,load_root,save_root,subj_name,count,queue=None,scaling_me
 
 
 def main():
-    # change two lines below according to your dataset
-    dataset_name = 'HCP1200'
-    load_root = './data/hcp_1200' # This folder should have fMRI files in nifti format with subject names. Ex) sub-01.nii.gz 
-    save_root = f'./data/{dataset_name}_MNI_to_TRs_minmax'
-    scaling_method = 'z-norm' # choose either 'z-norm'(default) or 'minmax'.
+    parser = argparse.ArgumentParser(description='Process image data.')
+    parser.add_argument('--load_root', type=str, required=True, help='Root directory to load data from')
+    parser.add_argument('--save_root', type=str, required=True, help='Root directory to save data to')
+    args = parser.parse_args()
 
-    # make result folders
+    load_root = args.load_root
+    save_root = args.save_root
+    scaling_method = 'z-norm'
+    
     filenames = os.listdir(load_root)
     os.makedirs(os.path.join(save_root, 'img'), exist_ok = True)
     os.makedirs(os.path.join(save_root, 'metadata'), exist_ok = True) # locate your metadata file at this folder 
@@ -64,13 +80,9 @@ def main():
     count = 0
     for filename in sorted(filenames):
         subj_name = filename[:-7] 
-        # extract subject name from nifti file. [:-7] rules out '.nii.gz'
-        # we recommend you use subj_name that aligns with the subject key in a metadata file.
 
-        expected_seq_length = 1000 # Specify the expected sequence length of fMRI for the case your preprocessing stopped unexpectedly and you try to resume the preprocessing.
-        
-        # change the line below according to your folder structure
-        if (subj_name not in finished_samples) or (len(os.listdir(os.path.join(save_root, subj_name))) < expected_seq_length): # preprocess if the subject folder does not exist, or the number of pth files is lower than expected sequence length. 
+        expected_seq_length = 1200
+        if (subj_name not in finished_samples) or (len(os.listdir(os.path.join(save_root, subj_name))) < expected_seq_length):
             try:
                 count+=1
                 p = Process(target=read_data, args=(filename,load_root,save_root,subj_name,count,queue,scaling_method))
@@ -80,6 +92,12 @@ def main():
             except Exception:
                 print('encountered problem with'+filename)
                 print(Exception)
+        else:
+            path = os.path.join(load_root, filename)
+            save_dir = os.path.join(save_root, subj_name)
+            print(f'{subj_name} has {len(os.listdir(os.path.join(save_root, subj_name)))} slices, save_dir is {save_dir}')
+            os.remove(path)
+
 
 if __name__=='__main__':
     start_time = time.time()

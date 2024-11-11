@@ -317,6 +317,7 @@ class LitClassifier(pl.LightningModule):
                     acc_func = BinaryAccuracy().to(total_out_logits.device)
                 elif self.hparams.num_classes > 2:
                     acc_func = MulticlassAccuracy(num_classes=self.hparams.num_classes).to(total_out_logits.device)
+                    acc3_func = MulticlassAccuracy(num_classes=self.hparams.num_classes, top_k=3).to(total_out_logits.device)
 
             if self.hparams.num_classes == 2:
                 auroc_func = BinaryAUROC().to(total_out_logits.device)
@@ -326,8 +327,11 @@ class LitClassifier(pl.LightningModule):
             elif self.hparams.num_classes > 2:
                 auroc_func = MulticlassAUROC(num_classes=self.hparams.num_classes).to(total_out_logits.device)
                 acc = acc_func(subj_avg_logits, subj_targets.long())
+                acc3 = acc3_func(subj_avg_logits, subj_targets.long())
                 bal_acc_sk = balanced_accuracy_score(subj_targets.cpu(), subj_avg_logits.max(dim=1)[1].int().cpu())
                 auroc = auroc_func(subj_avg_logits, subj_targets.long())
+
+                self.log(f"{mode}_acc3", acc3, sync_dist=True)
 
             self.log(f"{mode}_acc", acc, sync_dist=True)
             self.log(f"{mode}_balacc", bal_acc_sk, sync_dist=True)
