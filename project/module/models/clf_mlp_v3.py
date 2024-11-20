@@ -21,12 +21,13 @@ class TransformerEncoder(nn.Module):
 class ViTClassifier(nn.Module):
     def __init__(self, num_classes, num_tokens=160, emb_size=288, num_heads=8, num_layers=6, forward_expansion=4, dropout=0.1):
         super().__init__()
+        num_outputs = 1 if num_classes == 2 else num_classes
         self.cls_token = nn.Parameter(torch.zeros(1, 1, emb_size))
         self.pos_embed = nn.Parameter(torch.zeros(1, num_tokens + 1, emb_size))
         self.transformer_encoder = TransformerEncoder(emb_size=emb_size, num_heads=num_heads, num_layers=num_layers, forward_expansion=forward_expansion, dropout=dropout)
         self.mlp_head = nn.Sequential(
             nn.LayerNorm(emb_size),
-            nn.Linear(emb_size, num_classes)
+            nn.Linear(emb_size, num_outputs)
         )
 
     def forward(self, x):
@@ -41,4 +42,5 @@ class ViTClassifier(nn.Module):
         x = self.transformer_encoder(x)
         cls_token_final = x[:, 0]
         x = self.mlp_head(cls_token_final)
+        
         return x

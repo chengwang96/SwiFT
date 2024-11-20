@@ -142,7 +142,7 @@ class LitClassifier(pl.LightningModule):
                 target = (unnormalized_target - self.scaler.mean_[0]) / (self.scaler.scale_[0])
             elif self.hparams.label_scaling_method == 'minmax':
                 target = (unnormalized_target - self.scaler.data_min_[0]) / (self.scaler.data_max_[0] - self.scaler.data_min_[0])
-            
+        
         return subj, logits, target
     
     def _calculate_loss(self, batch, mode):
