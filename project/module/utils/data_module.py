@@ -148,8 +148,8 @@ class fMRIDataModule(pl.LightningDataModule):
             # meta_data_all = pd.read_csv(os.path.join(self.hparams.image_path, "metadata", "HCP_1200_all.csv"))
             if self.hparams.downstream_task == 'sex': task_name = 'Gender'
             elif self.hparams.downstream_task == 'age': task_name = 'age'
-            # CogTotalComp_AgeAdj CogTotalComp_Unadj Strength_AgeAdj Strength_Unadj ReadEng_AgeAdj ReadEng_Unadj 
-            elif self.hparams.downstream_task == 'int_total': task_name = 'CogTotalComp_AgeAdj'
+            # MMSE_Score Social_Task_Acc CogTotalComp_Unadj Emotion_Task_Acc Language_Task_Acc Strength_Unadj 
+            elif self.hparams.downstream_task == 'int_total': task_name = 'MMSE_Score'
             else: raise NotImplementedError()
 
             print('task_name = {}'.format(task_name))
