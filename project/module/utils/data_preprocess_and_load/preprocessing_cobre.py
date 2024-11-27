@@ -97,43 +97,6 @@ def main():
         subj_name = filename.split('-')[1][:-4]
         expected_seq_length = 120
 
-        # fill_zeroback = False
-        # print("processing: " + filename, flush=True)
-        # path = os.path.join(load_root, filename)
-        # try:
-        #     data = LoadImage()(path)
-        # except:
-        #     print('open failed')
-        #     return None
-        
-        # import ipdb; ipdb.set_trace()
-        # data = select_middle_96(data)
-        
-        # mask_path = path[:-19] + 'brain_mask.nii.gz'
-        # try:
-        #     background = LoadImage()(mask_path)
-        # except:
-        #     print('mask open failed')
-        #     return None
-        
-        # background = select_middle_96(background) == 0
-        # data[background] = 0
-        
-        # if scaling_method == 'z-norm':
-        #     global_mean = data[~background].mean()
-        #     global_std = data[~background].std()
-        #     data_temp = (data - global_mean) / global_std
-        # elif scaling_method == 'minmax':
-        #     data_temp = (data - data[~background].min()) / (data[~background].max() - data[~background].min())
-
-        # data_global = torch.empty(data.shape)
-        # data_global[background] = data_temp[~background].min() if not fill_zeroback else 0
-        # data_global[~background] = data_temp[~background]
-
-        # data_global = data_global.type(torch.float16)
-        # data_global_split = torch.split(data_global, 1, 3)
-        # import ipdb; ipdb.set_trace()
-
         if (subj_name not in finished_samples) or (len(os.listdir(os.path.join(save_root, subj_name))) < expected_seq_length):
             try:
                 count+=1
