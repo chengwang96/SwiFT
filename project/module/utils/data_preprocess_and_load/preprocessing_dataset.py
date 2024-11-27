@@ -56,12 +56,12 @@ def read_data(dataset_name, delete_after_preprocess, filename, load_root, save_r
     if not isExist:
         os.makedirs(save_dir)
     
-    if dataset_name in ['ukb', 'abcd', 'hcp', 'hcpd', 'hcpep']:
+    if dataset_name in ['ukb', 'abcd', 'hcp', 'hcpd', 'hcpep', 'hcptask']:
         data = select_middle_96(data)
     elif dataset_name in ['adhd200', 'cobre', 'ucla', 'god']:
         data = resize_to_96(data)
 
-    if dataset_name in ['adhd200', 'god', 'hcp', 'hcpd', 'ukb']:
+    if dataset_name in ['adhd200', 'god', 'hcp', 'hcpd', 'ukb', 'hcptask']:
         background = data==0
     else:
         if dataset_name in ['abcd', 'cobre', 'hcpep']:
@@ -179,6 +179,8 @@ def determine_subject_name(dataset_name, filename):
     elif dataset_name == 'ucla':
         return filename[:9]
     elif dataset_name == 'ukb':
+        return filename.split('.')[0]
+    elif dataset_name == 'hcptask':
         return filename.split('.')[0]
 
 def handle_delete_nii(load_root, save_root, filename, subj_name):
