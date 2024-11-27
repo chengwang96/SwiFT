@@ -51,7 +51,7 @@ def cli_main():
     #override parameters
     max_epochs = args.max_epochs
     num_nodes = args.num_nodes
-    devices = args.devices
+    devices = torch.cuda.device_count()
     project_name = args.project_name
     image_path = args.image_path
 
@@ -64,7 +64,7 @@ def cli_main():
         args.project_name = project_name
         args.max_epochs = max_epochs
         args.num_nodes = num_nodes
-        args.devices = devices
+        args.devices = torch.cuda.device_count()
         args.image_path = image_path       
     else:
         exp_id = None

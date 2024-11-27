@@ -18,7 +18,6 @@ project_name="hcp_ts_${score_name}_train1.0_mamba"
 python project/main.py \
   --accelerator gpu \
   --max_epochs 30 \
-  --devices 2 \
   --loggername tensorboard \
   --clf_head_version v3 \
   --dataset_name S1200 \

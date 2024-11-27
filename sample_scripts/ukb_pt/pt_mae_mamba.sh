@@ -18,7 +18,6 @@ project_name="ukb_mae_mamba_ratio${mask_ratio}"
 python project/main.py \
   --accelerator gpu \
   --max_epochs 30 \
-  --devices 2 \
   --loggername tensorboard \
   --clf_head_version v3 \
   --dataset_name UKB \
