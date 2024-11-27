@@ -22,6 +22,7 @@ def cli_main():
     parser.add_argument("--seed", default=1234, type=int, help="random seeds. recommend aligning this argument with data split number to control randomness")
     parser.add_argument("--dataset_name", type=str, choices=["S1200", "ABCD", "UKB", "Dummy", "Cobre", "ADHD200", "HCPA", "HCPD", "UCLA", "HCPEP", "GOD"], default="S1200")
     parser.add_argument("--downstream_task", type=str, default="sex", help="downstream task")
+    parser.add_argument("--score_name", type=str, default="MMSE_Score")
     parser.add_argument("--downstream_task_type", type=str, default="default", help="select either classification or regression according to your downstream task")
     parser.add_argument("--loggername", default="default", type=str, help="A name of logger")
     parser.add_argument("--project_name", default="default", type=str, help="A name of project (Neptune)")
