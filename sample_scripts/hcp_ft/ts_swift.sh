@@ -1,12 +1,16 @@
 #!/bin/bash
-# bash sample_scripts/hcp_ft/ts_abcd2hcp_mamba.sh score_name
+# bash sample_scripts/hcp_ft/ts_abcd2hcp_mamba.sh score_name batch_size
 
 # Set default score_name
 score_name="MMSE_Score"
+batch_size="12"
 
-# Override with the first argument if provided
+# Override with the arguments if provided
 if [ ! -z "$1" ]; then
   score_name=$1
+fi
+if [ ! -z "$2" ]; then
+  batch_size=$2
 fi
 
 # export CUDA_VISIBLE_DEVICES=0,1
@@ -22,8 +26,8 @@ python project/main.py \
   --clf_head_version v3 \
   --dataset_name S1200 \
   --image_path ./data/HCP1200_MNI_to_TRs_minmax \
-  --batch_size 12 \
-  --num_workers 12 \
+  --batch_size "$batch_size" \
+  --num_workers "$batch_size" \
   --project_name "$project_name" \
   --limit_training_samples 1.0 \
   --last_layer_full_MSA True \
