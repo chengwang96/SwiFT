@@ -22,14 +22,19 @@ project_name="hcp_ts_${score_name}_train1.0_swift"
 python project/main.py \
   --accelerator gpu \
   --max_epochs 30 \
+  --precision 32 \
+  --num_nodes 1 \
+  --strategy ddp \
   --loggername tensorboard \
   --clf_head_version v3 \
   --dataset_name S1200 \
   --image_path ./data/HCP1200_MNI_to_TRs_minmax \
   --batch_size "$batch_size" \
   --num_workers "$batch_size" \
+  --input_type rest \
   --project_name "$project_name" \
   --limit_training_samples 1.0 \
+  --c_multiplier 2 \
   --last_layer_full_MSA True \
   --downstream_task int_total \
   --score_name "$score_name" \
