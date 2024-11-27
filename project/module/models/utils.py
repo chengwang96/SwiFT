@@ -7,8 +7,6 @@ from pytz import timezone
 import argparse
 import os
 
-# import dill
-
 
 def datestamp():
     time = datetime.now(timezone("Asia/Seoul")).strftime("%m_%d__%H_%M_%S")
@@ -36,18 +34,7 @@ def sort_args(phase, args):
     return phase_specific_args
 
 
-# def args_logger(args):
-#     args_to_pkl(args)
-#     args_to_text(args)
-
-
-# def args_to_pkl(args):
-#     with open(os.path.join(args.experiment_folder, "arguments_as_is.pkl"), "wb") as f:
-#         dill.dump(vars(args), f)
-
-
 def args_to_text(args):
     with open(os.path.join(args.experiment_folder, "argument_documentation.txt"), "w+") as f:
         for name, arg in vars(args).items():
             f.write("{}: {}\n".format(name, arg))
-

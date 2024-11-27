@@ -177,7 +177,7 @@ class fMRIDataModule(pl.LightningDataModule):
                         target = meta_task[meta_task["Subject"]==int(subject)][task_name].values[0]
                         sex = meta_task[meta_task["Subject"]==int(subject)]["Gender"].values[0]
                         sex = 1 if sex == "M" else 0
-                    final_dict[subject]=[sex, target]
+                    final_dict[subject] = [sex, target]
             
             print('Load dataset HCP1200, {} subjects'.format(len(final_dict)))
             
