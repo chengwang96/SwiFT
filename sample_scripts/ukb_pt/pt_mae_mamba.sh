@@ -22,8 +22,8 @@ python project/main.py \
   --clf_head_version v3 \
   --dataset_name UKB \
   --image_path ./data/UKB_MNI_to_TRs_minmax \
-  --batch_size 16 \
-  --num_workers 16 \
+  --batch_size 4 \
+  --num_workers 4 \
   --project_name "$project_name" \
   --limit_training_samples 1.0 \
   --last_layer_full_MSA True \
