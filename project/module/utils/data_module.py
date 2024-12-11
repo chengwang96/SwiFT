@@ -3,7 +3,7 @@ import pytorch_lightning as pl
 import numpy as np
 import pandas as pd
 from torch.utils.data import DataLoader, Subset
-from .data_preprocess_and_load.datasets import S1200, ABCD, UKB, Dummy, Cobre, ADHD200, UCLA, HCPEP, GOD
+from .data_preprocess_and_load.datasets import S1200, ABCD, UKB, Dummy, Cobre, ADHD200, UCLA, HCPEP, GOD, HCPTASK
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from .parser import str2bool
 
@@ -70,6 +70,8 @@ class fMRIDataModule(pl.LightningDataModule):
             return HCPEP
         elif self.hparams.dataset_name == 'GOD':
             return GOD 
+        elif self.hparams.dataset_name == 'HCPTASK':
+            return HCPTASK 
         else:
             raise NotImplementedError
 
@@ -393,6 +395,23 @@ class fMRIDataModule(pl.LightningDataModule):
                     final_dict[subject]=[sex, target]
             
             print('Load dataset UKB, {} subjects'.format(len(final_dict)))
+        
+        elif self.hparams.dataset_name == "HCPTASK":
+            subject_list = [subj for subj in os.listdir(img_root)]
+
+            if self.hparams.downstream_task == 'classification': task_name = 'classification'
+            else: raise ValueError('downstream task not supported')
+
+            state_to_label = {'EMOTION': 0, 'GAMBLING': 1, 'LANGUAGE': 2, 'MOTOR': 3, 'RELATIONAL': 4, 'SOCIAL': 5, 'WM': 6}
+
+            for subject in subject_list:
+                state = subject.split('_')[-2]
+                state = state_to_label[state]
+
+                sex = 0
+                final_dict[subject]=[sex, state]
+            
+            print('Load dataset HCPTASK, {} subjects'.format(len(final_dict)))
         
         return final_dict
 
